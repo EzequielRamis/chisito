@@ -1,68 +1,135 @@
 module Opcodes where
 
-import Data.Bits (Bits (shiftR, (.&.)))
-import Data.Word (Word8)
+import Data.Bits (Bits (shiftL, shiftR), (.&.), (.|.))
+import Data.Word (Word16, Word8)
+
+type Program = [Word8]
+
+type Vx = Word8
+
+type Vy = Word8
+
+type Addr = Word16
 
 type Nibble = Word8
 
-type Opcode = (Nibble, Nibble, Nibble, Nibble)
+type Byte = Word8
 
-type Addr = (Nibble, Nibble, Nibble)
+data Opcode
+  = Ret
+  | Cls
+  | Jp Addr
+  | Call Addr
+  | SeB Vx Byte
+  | SneB Vx Byte
+  | Se Vx Vy
+  | LdB Vx Byte
+  | AddB Vx Byte
+  | Ld Vx Vy
+  | Or Vx Vy
+  | And Vx Vy
+  | Xor Vx Vy
+  | Add Vx Vy
+  | Sub Vx Vy
+  | Shr Vx Vy
+  | Subn Vx Vy
+  | Shl Vx Vy
+  | Sne Vx Vy
+  | LdI Addr
+  | JpV Addr
+  | Rnd Vx Byte
+  | Drw Vx Vy Nibble
+  | Skp Vx
+  | Sknp Vx
+  | LdVDT Vx
+  | LdK Vx
+  | LdDTV Vx
+  | LdST Vx
+  | AddI Vx
+  | LdFV Vx
+  | LdBV Vx
+  | LdIV Vx
+  | LdVI Vx
+  deriving (Show)
 
-type Byte = (Nibble, Nibble)
+op :: (Word8, Word8) -> Opcode
+op (h, l) = op' (left h, right h, l)
 
-toOpcode :: [Nibble] -> Opcode
-toOpcode [b, a] = (big a, low a, big b, low b)
-toOpcode _ = error "Invalid ROM Format"
+op' :: (Word8, Word8, Word8) -> Opcode
+op' (0x0, h, l) = op0 (h, l)
+op' (0x1, h, l) = Jp $ merge h l
+op' (0x2, h, l) = Call $ merge h l
+op' (0x3, h, l) = SeB h l
+op' (0x4, h, l) = SneB h l
+op' (0x5, h, l) = op5 (h, l)
+op' (0x6, h, l) = LdB h l
+op' (0x7, h, l) = AddB h l
+op' (0x8, h, l) = op8 (h, left l, right l)
+op' (0x9, h, l) = op9 (h, l)
+op' (0xA, h, l) = LdI $ merge h l
+op' (0xB, h, l) = JpV $ merge h l
+op' (0xC, h, l) = Rnd h l
+op' (0xD, h, l) = Drw h (left l) (right l)
+op' (0xE, h, l) = opE (h, l)
+op' (0xF, h, l) = opF (h, l)
+op' (_, _, _) = error "Foo"
 
-big :: Nibble -> Nibble
-big n = shiftR (maskB .&. n) 0x4
+op0 :: (Word8, Word8) -> Opcode
+op0 (0x0, 0xE0) = Cls
+op0 (0x0, 0xEE) = Ret
+op0 (_, _) = error "Foo"
 
-low :: Nibble -> Nibble
-low n = maskL .&. n
+op5 :: (Word8, Word8) -> Opcode
+op5 (h, l)
+  | right l == 0x0 = Se h $ left l
+  | otherwise = error "Foo"
 
-maskB :: Nibble
-maskB = 0xF0
+op8 :: (Word8, Word8, Word8) -> Opcode
+op8 (x, y, 0x1) = Or x y
+op8 (x, y, 0x2) = And x y
+op8 (x, y, 0x3) = Xor x y
+op8 (x, y, 0x4) = Add x y
+op8 (x, y, 0x5) = Sub x y
+op8 (x, y, 0x6) = Shr x y
+op8 (x, y, 0x7) = Subn x y
+op8 (x, y, 0xE) = Shl x y
+op8 (_, _, _) = error "Foo"
 
-maskL :: Nibble
-maskL = 0x0F
+op9 :: (Word8, Word8) -> Opcode
+op9 (h, l)
+  | right l == 0x0 = Sne h $ left l
+  | otherwise = error "Foo"
 
--- Opcodes --
+opE :: (Word8, Word8) -> Opcode
+opE (x, 0x9E) = Skp x
+opE (x, 0xA1) = Sknp x
+opE (_, _) = error "Foo"
 
-execute :: Opcode -> ()
-execute (0x0, 0x0, 0xE, 0xE) = () -- RET
-execute (0x0, 0x0, 0xE, 0x0) = () -- CLS
-execute (0x0, _n2, _n1, _n0) = () -- SYS addr
-execute (0x1, _n2, _n1, _n0) = () -- JP addr
-execute (0x2, _n2, _n1, _n0) = () -- CALL addr
-execute (0x3, _x0, _k1, _k0) = () -- SE Vx, byte
-execute (0x4, _x0, _k1, _k0) = () -- SNE Vx, byte
-execute (0x5, _x0, _y0, 0x0) = () -- SE Vx, Vy
-execute (0x6, _x0, _k1, _k0) = () -- LD Vx, byte
-execute (0x7, _x0, _k1, _k0) = () -- ADD Vx, byte
-execute (0x8, _x0, _y0, 0x0) = () -- LD Vx, Vy
-execute (0x8, _x0, _y0, 0x1) = () -- OR Vx, Vy
-execute (0x8, _x0, _y0, 0x2) = () -- AND Vx, Vy
-execute (0x8, _x0, _y0, 0x3) = () -- XOR Vx, Vy
-execute (0x8, _x0, _y0, 0x4) = () -- ADD Vx, Vy
-execute (0x8, _x0, _y0, 0x5) = () -- SUB Vx, Vy
-execute (0x8, _x0, _y0, 0x6) = () -- SHR Vx {, Vy}
-execute (0x8, _x0, _y0, 0x7) = () -- SUBN Vx, Vy
-execute (0x8, _x0, _y0, 0xE) = () -- SHL Vx {, Vy}
-execute (0x9, _x0, _y0, 0x0) = () -- SNE Vx, Vy
-execute (0xA, _n2, _n1, _n0) = () -- LD I, addr
-execute (0xB, _n2, _n1, _n0) = () -- JP V0, addr
-execute (0xC, _x0, _k1, _k0) = () -- RND Vx, byte
-execute (0xD, _x0, _y0, _n0) = () -- DRW Vx, Vy, nibble
-execute (0xE, _x0, 0x9, 0xE) = () -- SKP Vx
-execute (0xE, _x0, 0xA, 0x1) = () -- SKNP Vx
-execute (0xF, _x0, 0x0, 0x7) = () -- LD Vx, DT
-execute (0xF, _x0, 0x0, 0xA) = () -- LD Vx, K
-execute (0xF, _x0, 0x1, 0x5) = () -- LD DT, Vx
-execute (0xF, _x0, 0x1, 0x8) = () -- LD ST, Vx
-execute (0xF, _x0, 0x1, 0xE) = () -- ADD I, Vx
-execute (0xF, _x0, 0x2, 0x9) = () -- LD F, Vx
-execute (0xF, _x0, 0x3, 0x3) = () -- LD B, Vx
-execute (0xF, _x0, 0x5, 0x5) = () -- LD [I], Vx
-execute (0xF, _x0, 0x6, 0x5) = () -- LD Vx, [I]
-execute _ = () -- error
+opF :: (Word8, Word8) -> Opcode
+opF (x, 0x07) = LdVDT x
+opF (x, 0x0A) = LdK x
+opF (x, 0x15) = LdDTV x
+opF (x, 0x18) = LdST x
+opF (x, 0x1E) = AddI x
+opF (x, 0x29) = LdFV x
+opF (x, 0x33) = LdBV x
+opF (x, 0x55) = LdIV x
+opF (x, 0x65) = LdVI x
+opF (_, _) = error "Foo"
+
+swapEnd :: [Word8] -> [Word8]
+swapEnd [] = []
+swapEnd [x] = [x]
+swapEnd (x : y : xs) = y : x : swapEnd xs
+
+merge :: Word8 -> Word8 -> Word16
+merge h l =
+  let high = fromIntegral h :: Word16
+      low = fromIntegral l :: Word16
+   in shiftL high 8 .|. low
+
+left :: Word8 -> Word8
+left b = shiftR (b .&. 0xF0) 4
+
+right :: Word8 -> Word8
+right = (.&. 0x0F)
