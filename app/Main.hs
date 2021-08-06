@@ -2,9 +2,7 @@ module Main where
 
 import Control.Concurrent (threadDelay)
 import qualified Data.ByteString as B
-import Data.Word (Word8)
-import Numeric (showHex)
-import Opcodes (Program, decode, merge, swapEnd)
+import Opcodes (Program, decode, merge, show2, show4, swapEnd)
 
 second :: Int
 second = 1000000
@@ -20,14 +18,14 @@ main = do
 program :: B.ByteString -> Program
 program = swapEnd . B.unpack
 
-load :: [Word8] -> IO ()
+load :: Program -> IO ()
 load [] = return ()
-load [b] = print $ "Invalid Opcode: 00" ++ showHex b ""
+load [b] = print $ "Invalid Opcode: 00" ++ show2 b
 load (b : b' : bs) = do
   threadDelay $ ticksPerSec 700
   _ <- case opcode of
-    Just op -> print $ showHex (merge b b') ": " ++ show op
-    Nothing -> print $ showHex (merge b b') ": Nothing"
+    Just op -> print $ show4 (merge b b') ++ ": " ++ show op
+    Nothing -> print $ show4 (merge b b') ++ ": Nothing"
   load bs
   where
     opcode = decode b b'

@@ -4,7 +4,7 @@ import Data.Bits (Bits (shiftL, shiftR), (.&.), (.|.))
 import Data.ByteString.Builder (toLazyByteString, word16BE)
 import Data.ByteString.Lazy (unpack)
 import Data.Word (Word16, Word8)
-import Numeric (showHex)
+import Text.Printf (printf)
 
 type Program = [Word8]
 
@@ -59,42 +59,54 @@ data Opcode
   | LdIV Vx
   | LdVI Vx
 
+show1 :: Word8 -> String
+show1 = printf "%X"
+
+show2 :: Word8 -> String
+show2 = printf "%02X"
+
+show3 :: Word16 -> String
+show3 = printf "%03X"
+
+show4 :: Word16 -> String
+show4 = printf "%04X"
+
 instance Show Opcode where
-  show (Sys addr) = "SYS " ++ showHex addr ""
+  show (Sys addr) = "SYS " ++ show3 addr
   show Cls = "CLS"
   show Ret = "RET"
-  show (Jp addr) = "JP " ++ showHex addr ""
-  show (Call addr) = "CALL " ++ showHex addr ""
-  show (SeB x b) = "SE V" ++ showHex x ", " ++ showHex b ""
-  show (SneB x b) = "SNE V" ++ showHex x ", " ++ showHex b ""
-  show (Se x y) = "SE V" ++ showHex x ", V" ++ showHex y ""
-  show (LdB x b) = "LD V" ++ showHex x ", " ++ showHex b ""
-  show (AddB x b) = "ADD V" ++ showHex x ", " ++ showHex b ""
-  show (Ld x y) = "LD V" ++ showHex x ", V" ++ showHex y ""
-  show (Or x y) = "OR V" ++ showHex x ", V" ++ showHex y ""
-  show (And x y) = "AND V" ++ showHex x ", V" ++ showHex y ""
-  show (Xor x y) = "XOR V" ++ showHex x ", V" ++ showHex y ""
-  show (Add x y) = "ADD V" ++ showHex x ", V" ++ showHex y ""
-  show (Sub x y) = "SUB V" ++ showHex x ", V" ++ showHex y ""
-  show (Shr x y) = "SHR V" ++ showHex x " , V" ++ showHex y ""
-  show (Subn x y) = "SUBN V" ++ showHex x ", V" ++ showHex y ""
-  show (Shl x y) = "SHL V" ++ showHex x " , V" ++ showHex y ""
-  show (Sne x y) = "SNE V" ++ showHex x ", V" ++ showHex y ""
-  show (LdI addr) = "LD I, " ++ showHex addr ""
-  show (JpV addr) = "JP V0, " ++ showHex addr ""
-  show (Rnd x b) = "RND V" ++ showHex x ", " ++ showHex b ""
-  show (Drw x y n) = "DRW V" ++ showHex x ", V" ++ showHex y ", " ++ showHex n ""
-  show (Skp x) = "SKP V" ++ showHex x ""
-  show (Sknp x) = "SKNP V" ++ showHex x ""
-  show (LdVDT x) = "LD V" ++ showHex x ", DT"
-  show (LdK x) = "LD V" ++ showHex x ", K"
-  show (LdDTV x) = "LD DT, V" ++ showHex x ""
-  show (LdST x) = "LD ST, V" ++ showHex x ""
-  show (AddI x) = "ADD I, V" ++ showHex x ""
-  show (LdFV x) = "LD F, V" ++ showHex x ""
-  show (LdBV x) = "LD B, V" ++ showHex x ""
-  show (LdIV x) = "LD [I], V" ++ showHex x ""
-  show (LdVI x) = "LD V" ++ showHex x ", [I]"
+  show (Jp addr) = "JP " ++ show3 addr
+  show (Call addr) = "CALL " ++ show3 addr
+  show (SeB x b) = "SE V" ++ show1 x ++ ", " ++ show2 b
+  show (SneB x b) = "SNE V" ++ show1 x ++ ", " ++ show2 b
+  show (Se x y) = "SE V" ++ show1 x ++ ", V" ++ show1 y
+  show (LdB x b) = "LD V" ++ show1 x ++ ", " ++ show2 b
+  show (AddB x b) = "ADD V" ++ show1 x ++ ", " ++ show2 b
+  show (Ld x y) = "LD V" ++ show1 x ++ ", V" ++ show1 y
+  show (Or x y) = "OR V" ++ show1 x ++ ", V" ++ show1 y
+  show (And x y) = "AND V" ++ show1 x ++ ", V" ++ show1 y
+  show (Xor x y) = "XOR V" ++ show1 x ++ ", V" ++ show1 y
+  show (Add x y) = "ADD V" ++ show1 x ++ ", V" ++ show1 y
+  show (Sub x y) = "SUB V" ++ show1 x ++ ", V" ++ show1 y
+  show (Shr x y) = "SHR V" ++ show1 x ++ ", V" ++ show1 y
+  show (Subn x y) = "SUBN V" ++ show1 x ++ ", V" ++ show1 y
+  show (Shl x y) = "SHL V" ++ show1 x ++ ", V" ++ show1 y
+  show (Sne x y) = "SNE V" ++ show1 x ++ ", V" ++ show1 y
+  show (LdI addr) = "LD I, " ++ show3 addr
+  show (JpV addr) = "JP V0, " ++ show3 addr
+  show (Rnd x b) = "RND V" ++ show1 x ++ ", " ++ show2 b
+  show (Drw x y n) = "DRW V" ++ show1 x ++ ", V" ++ show1 y ++ ", " ++ show1 n
+  show (Skp x) = "SKP V" ++ show1 x
+  show (Sknp x) = "SKNP V" ++ show1 x
+  show (LdVDT x) = "LD V" ++ show1 x ++ ", DT"
+  show (LdK x) = "LD V" ++ show1 x ++ ", K"
+  show (LdDTV x) = "LD DT, V" ++ show1 x
+  show (LdST x) = "LD ST, V" ++ show1 x
+  show (AddI x) = "ADD I, V" ++ show1 x
+  show (LdFV x) = "LD F, V" ++ show1 x
+  show (LdBV x) = "LD B, V" ++ show1 x
+  show (LdIV x) = "LD [I], V" ++ show1 x
+  show (LdVI x) = "LD V" ++ show1 x ++ ", [I]"
 
 decode :: Decoded
 decode h = op (left h) (right h)
