@@ -1,7 +1,10 @@
 module Opcodes where
 
 import Data.Bits (Bits (shiftL, shiftR), (.&.), (.|.))
+import Data.ByteString.Builder (toLazyByteString, word16BE)
+import Data.ByteString.Lazy (unpack)
 import Data.Word (Word16, Word8)
+import Numeric (showHex)
 
 type Program = [Word8]
 
@@ -15,9 +18,14 @@ type Nibble = Word8
 
 type Byte = Word8
 
+type Decoded = Word8 -> Word8 -> Maybe Opcode
+
+type Decoded' = Word8 -> Word8 -> Word8 -> Maybe Opcode
+
 data Opcode
-  = Ret
+  = Sys Addr -- This one will be ignored but it's there 'cause is not invalid
   | Cls
+  | Ret
   | Jp Addr
   | Call Addr
   | SeB Vx Byte
@@ -50,72 +58,107 @@ data Opcode
   | LdBV Vx
   | LdIV Vx
   | LdVI Vx
-  deriving (Show)
 
-op :: (Word8, Word8) -> Opcode
-op (h, l) = op' (left h, right h, l)
+instance Show Opcode where
+  show (Sys addr) = "SYS " ++ showHex addr ""
+  show Cls = "CLS"
+  show Ret = "RET"
+  show (Jp addr) = "JP " ++ showHex addr ""
+  show (Call addr) = "CALL " ++ showHex addr ""
+  show (SeB x b) = "SE V" ++ showHex x ", " ++ showHex b ""
+  show (SneB x b) = "SNE V" ++ showHex x ", " ++ showHex b ""
+  show (Se x y) = "SE V" ++ showHex x ", V" ++ showHex y ""
+  show (LdB x b) = "LD V" ++ showHex x ", " ++ showHex b ""
+  show (AddB x b) = "ADD V" ++ showHex x ", " ++ showHex b ""
+  show (Ld x y) = "LD V" ++ showHex x ", V" ++ showHex y ""
+  show (Or x y) = "OR V" ++ showHex x ", V" ++ showHex y ""
+  show (And x y) = "AND V" ++ showHex x ", V" ++ showHex y ""
+  show (Xor x y) = "XOR V" ++ showHex x ", V" ++ showHex y ""
+  show (Add x y) = "ADD V" ++ showHex x ", V" ++ showHex y ""
+  show (Sub x y) = "SUB V" ++ showHex x ", V" ++ showHex y ""
+  show (Shr x y) = "SHR V" ++ showHex x " , V" ++ showHex y ""
+  show (Subn x y) = "SUBN V" ++ showHex x ", V" ++ showHex y ""
+  show (Shl x y) = "SHL V" ++ showHex x " , V" ++ showHex y ""
+  show (Sne x y) = "SNE V" ++ showHex x ", V" ++ showHex y ""
+  show (LdI addr) = "LD I, " ++ showHex addr ""
+  show (JpV addr) = "JP V0, " ++ showHex addr ""
+  show (Rnd x b) = "RND V" ++ showHex x ", " ++ showHex b ""
+  show (Drw x y n) = "DRW V" ++ showHex x ", V" ++ showHex y ", " ++ showHex n ""
+  show (Skp x) = "SKP V" ++ showHex x ""
+  show (Sknp x) = "SKNP V" ++ showHex x ""
+  show (LdVDT x) = "LD V" ++ showHex x ", DT"
+  show (LdK x) = "LD V" ++ showHex x ", K"
+  show (LdDTV x) = "LD DT, V" ++ showHex x ""
+  show (LdST x) = "LD ST, V" ++ showHex x ""
+  show (AddI x) = "ADD I, V" ++ showHex x ""
+  show (LdFV x) = "LD F, V" ++ showHex x ""
+  show (LdBV x) = "LD B, V" ++ showHex x ""
+  show (LdIV x) = "LD [I], V" ++ showHex x ""
+  show (LdVI x) = "LD V" ++ showHex x ", [I]"
 
-op' :: (Word8, Word8, Word8) -> Opcode
-op' (0x0, h, l) = op0 (h, l)
-op' (0x1, h, l) = Jp $ merge h l
-op' (0x2, h, l) = Call $ merge h l
-op' (0x3, h, l) = SeB h l
-op' (0x4, h, l) = SneB h l
-op' (0x5, h, l) = op5 (h, l)
-op' (0x6, h, l) = LdB h l
-op' (0x7, h, l) = AddB h l
-op' (0x8, h, l) = op8 (h, left l, right l)
-op' (0x9, h, l) = op9 (h, l)
-op' (0xA, h, l) = LdI $ merge h l
-op' (0xB, h, l) = JpV $ merge h l
-op' (0xC, h, l) = Rnd h l
-op' (0xD, h, l) = Drw h (left l) (right l)
-op' (0xE, h, l) = opE (h, l)
-op' (0xF, h, l) = opF (h, l)
-op' (_, _, _) = error "Foo"
+decode :: Decoded
+decode h = op (left h) (right h)
 
-op0 :: (Word8, Word8) -> Opcode
-op0 (0x0, 0xE0) = Cls
-op0 (0x0, 0xEE) = Ret
-op0 (_, _) = error "Foo"
+op :: Decoded'
+op 0x0 h l = op0 h l
+op 0x1 h l = Just . Jp $ merge h l
+op 0x2 h l = Just . Call $ merge h l
+op 0x3 h l = Just $ SeB h l
+op 0x4 h l = Just $ SneB h l
+op 0x5 h l = op5 h (left l) (right l)
+op 0x6 h l = Just $ LdB h l
+op 0x7 h l = Just $ AddB h l
+op 0x8 h l = op8 h (left l) (right l)
+op 0x9 h l = op9 h (left l) (right l)
+op 0xA h l = Just . LdI $ merge h l
+op 0xB h l = Just . JpV $ merge h l
+op 0xC h l = Just $ Rnd h l
+op 0xD h l = Just $ Drw h (left l) (right l)
+op 0xE h l = opE h l
+op 0xF h l = opF h l
+op _ _ _ = Nothing
 
-op5 :: (Word8, Word8) -> Opcode
-op5 (h, l)
-  | right l == 0x0 = Se h $ left l
-  | otherwise = error "Foo"
+op0 :: Decoded
+op0 0x0 0xE0 = Just Cls
+op0 0x0 0xEE = Just Ret
+op0 h l = Just . Sys $ merge h l
 
-op8 :: (Word8, Word8, Word8) -> Opcode
-op8 (x, y, 0x1) = Or x y
-op8 (x, y, 0x2) = And x y
-op8 (x, y, 0x3) = Xor x y
-op8 (x, y, 0x4) = Add x y
-op8 (x, y, 0x5) = Sub x y
-op8 (x, y, 0x6) = Shr x y
-op8 (x, y, 0x7) = Subn x y
-op8 (x, y, 0xE) = Shl x y
-op8 (_, _, _) = error "Foo"
+op5 :: Decoded'
+op5 x y 0x0 = Just $ Se x y
+op5 _ _ _ = Nothing
 
-op9 :: (Word8, Word8) -> Opcode
-op9 (h, l)
-  | right l == 0x0 = Sne h $ left l
-  | otherwise = error "Foo"
+op8 :: Decoded'
+op8 x y 0x0 = Just $ Ld x y
+op8 x y 0x1 = Just $ Or x y
+op8 x y 0x2 = Just $ And x y
+op8 x y 0x3 = Just $ Xor x y
+op8 x y 0x4 = Just $ Add x y
+op8 x y 0x5 = Just $ Sub x y
+op8 x y 0x6 = Just $ Shr x y
+op8 x y 0x7 = Just $ Subn x y
+op8 x y 0xE = Just $ Shl x y
+op8 _ _ _ = Nothing
 
-opE :: (Word8, Word8) -> Opcode
-opE (x, 0x9E) = Skp x
-opE (x, 0xA1) = Sknp x
-opE (_, _) = error "Foo"
+op9 :: Decoded'
+op9 x y 0x0 = Just $ Sne x y
+op9 _ _ _ = Nothing
 
-opF :: (Word8, Word8) -> Opcode
-opF (x, 0x07) = LdVDT x
-opF (x, 0x0A) = LdK x
-opF (x, 0x15) = LdDTV x
-opF (x, 0x18) = LdST x
-opF (x, 0x1E) = AddI x
-opF (x, 0x29) = LdFV x
-opF (x, 0x33) = LdBV x
-opF (x, 0x55) = LdIV x
-opF (x, 0x65) = LdVI x
-opF (_, _) = error "Foo"
+opE :: Decoded
+opE x 0x9E = Just $ Skp x
+opE x 0xA1 = Just $ Sknp x
+opE _ _ = Nothing
+
+opF :: Decoded
+opF x 0x07 = Just $ LdVDT x
+opF x 0x0A = Just $ LdK x
+opF x 0x15 = Just $ LdDTV x
+opF x 0x18 = Just $ LdST x
+opF x 0x1E = Just $ AddI x
+opF x 0x29 = Just $ LdFV x
+opF x 0x33 = Just $ LdBV x
+opF x 0x55 = Just $ LdIV x
+opF x 0x65 = Just $ LdVI x
+opF _ _ = Nothing
 
 swapEnd :: [Word8] -> [Word8]
 swapEnd [] = []
@@ -127,6 +170,9 @@ merge h l =
   let high = fromIntegral h :: Word16
       low = fromIntegral l :: Word16
    in shiftL high 8 .|. low
+
+split :: Word16 -> [Word8]
+split = unpack . toLazyByteString . word16BE
 
 left :: Word8 -> Word8
 left b = shiftR (b .&. 0xF0) 4
