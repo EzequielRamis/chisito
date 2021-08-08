@@ -2,7 +2,7 @@
 
 module Helpers where
 
-import Data.Bits (Bits (shiftL, shiftR), (.&.), (.|.))
+import Data.Bits (shiftL, shiftR, (.&.), (.|.))
 import Data.ByteString.Builder (toLazyByteString, word16BE)
 import Data.ByteString.Lazy (unpack)
 import Data.List (uncons)
@@ -23,51 +23,48 @@ type Nibble = Word8
 
 type Byte = Word8
 
+data Err = StackOverflow | StackUnderflow
+
 data Stack a = Stack
-  { _top :: Int,
-    max :: Int,
+  { max :: Int,
     _items :: [a]
   }
   deriving (Show)
-
-data Err = StackOverflow | StackUnderflow
 
 makeLenses ''Stack
 
 new :: Int -> Stack a
 new n =
   Stack
-    { _top = 0,
-      max = n,
+    { max = n,
       _items = []
     }
 
 push :: a -> Stack a -> Either Err (Stack a)
 push a s
-  | _top s == max s = Left StackOverflow
+  | length (_items s) == max s = Left StackOverflow
   | otherwise =
-    Right $
-      s & over top (+ 1)
-        & over items (a :)
+    return $
+      s & over items (a :)
+
+view :: Stack a -> Either Err (a, [a])
+view s = do
+  case uncons $ _items s of
+    Nothing -> Left StackUnderflow
+    Just t -> return t
 
 pop :: Stack a -> Either Err (Stack a, a)
-pop s
-  | _top s == 0 = Left StackUnderflow
-  | otherwise =
-    Right
-      ( s & over top (+ (-1))
-          & set items xs,
-        x
-      )
-  where
-    v = _items s
-    (x, xs) = (head v, tail v)
+pop s = do
+  t <- view s
+  return
+    ( s & set items (snd t),
+      fst t
+    )
 
 peek :: Stack a -> Either Err a
 peek s = do
-  case uncons $ _items s of
-    Nothing -> Left StackUnderflow
-    Just t -> return $ fst t
+  t <- view s
+  return $ fst t
 
 swapEnd :: [Word8] -> [Word8]
 swapEnd [] = []

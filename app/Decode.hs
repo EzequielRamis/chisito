@@ -35,9 +35,9 @@ data Opcode
   | Xor Vx Vy
   | Add Vx Vy
   | Sub Vx Vy
-  | Shr Vx Vy
+  | Shr Vx
   | Subn Vx Vy
-  | Shl Vx Vy
+  | Shl Vx
   | Sne Vx Vy
   | LdI Addr
   | JpV Addr
@@ -71,9 +71,9 @@ instance Show Opcode where
   show (Xor x y) = "XOR V" ++ show1 x ++ ", V" ++ show1 y
   show (Add x y) = "ADD V" ++ show1 x ++ ", V" ++ show1 y
   show (Sub x y) = "SUB V" ++ show1 x ++ ", V" ++ show1 y
-  show (Shr x y) = "SHR V" ++ show1 x ++ ", V" ++ show1 y
+  show (Shr x) = "SHR V" ++ show1 x
   show (Subn x y) = "SUBN V" ++ show1 x ++ ", V" ++ show1 y
-  show (Shl x y) = "SHL V" ++ show1 x ++ ", V" ++ show1 y
+  show (Shl x) = "SHL V" ++ show1 x
   show (Sne x y) = "SNE V" ++ show1 x ++ ", V" ++ show1 y
   show (LdI addr) = "LD I, " ++ show3 addr
   show (JpV addr) = "JP V0, " ++ show3 addr
@@ -129,9 +129,9 @@ op8 x y 0x2 = Just $ And x y
 op8 x y 0x3 = Just $ Xor x y
 op8 x y 0x4 = Just $ Add x y
 op8 x y 0x5 = Just $ Sub x y
-op8 x y 0x6 = Just $ Shr x y
+op8 x _ 0x6 = Just $ Shr x
 op8 x y 0x7 = Just $ Subn x y
-op8 x y 0xE = Just $ Shl x y
+op8 x _ 0xE = Just $ Shl x
 op8 _ _ _ = Nothing
 
 op9 :: Decoded'

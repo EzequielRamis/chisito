@@ -33,6 +33,7 @@ executable chisito
                       brick,
                       bytestring,
                       vector,
-                      microlens-platform
+                      microlens-platform,
+                      random
     hs-source-dirs:   app
     default-language: Haskell2010
