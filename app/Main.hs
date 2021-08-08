@@ -2,7 +2,8 @@ module Main where
 
 import Control.Concurrent (threadDelay)
 import qualified Data.ByteString as B
-import Opcodes (Program, decode, merge, show2, show4, swapEnd)
+import Decode (decode)
+import Helpers (Program, merge, show2, show4, swapEnd)
 
 second :: Int
 second = 1000000

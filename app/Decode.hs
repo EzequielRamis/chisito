@@ -1,30 +1,26 @@
-module Opcodes where
+module Decode (Opcode (..), decode) where
 
-import Data.Bits (Bits (shiftL, shiftR), (.&.), (.|.))
-import Data.ByteString.Builder (toLazyByteString, word16BE)
-import Data.ByteString.Lazy (unpack)
-import Data.Word (Word16, Word8)
-import Text.Printf (printf)
-
-type Program = [Word8]
-
-type Vx = Word8
-
-type Vy = Word8
-
-type Addr = Word16
-
-type Nibble = Word8
-
-type Byte = Word8
+import Data.Word (Word8)
+import Helpers
+  ( Addr,
+    Byte,
+    Nibble,
+    Vx,
+    Vy,
+    left,
+    merge,
+    right,
+    show1,
+    show2,
+    show3,
+  )
 
 type Decoded = Word8 -> Word8 -> Maybe Opcode
 
 type Decoded' = Word8 -> Word8 -> Word8 -> Maybe Opcode
 
 data Opcode
-  = Sys Addr -- This one will be ignored but it's there 'cause is not invalid
-  | Cls
+  = Cls
   | Ret
   | Jp Addr
   | Call Addr
@@ -59,20 +55,7 @@ data Opcode
   | LdIV Vx
   | LdVI Vx
 
-show1 :: Word8 -> String
-show1 = printf "%X"
-
-show2 :: Word8 -> String
-show2 = printf "%02X"
-
-show3 :: Word16 -> String
-show3 = printf "%03X"
-
-show4 :: Word16 -> String
-show4 = printf "%04X"
-
 instance Show Opcode where
-  show (Sys addr) = "SYS " ++ show3 addr
   show Cls = "CLS"
   show Ret = "RET"
   show (Jp addr) = "JP " ++ show3 addr
@@ -133,7 +116,7 @@ op _ _ _ = Nothing
 op0 :: Decoded
 op0 0x0 0xE0 = Just Cls
 op0 0x0 0xEE = Just Ret
-op0 h l = Just . Sys $ merge h l
+op0 _ _ = Nothing
 
 op5 :: Decoded'
 op5 x y 0x0 = Just $ Se x y
@@ -171,23 +154,3 @@ opF x 0x33 = Just $ LdBV x
 opF x 0x55 = Just $ LdIV x
 opF x 0x65 = Just $ LdVI x
 opF _ _ = Nothing
-
-swapEnd :: [Word8] -> [Word8]
-swapEnd [] = []
-swapEnd [x] = [x]
-swapEnd (x : y : xs) = y : x : swapEnd xs
-
-merge :: Word8 -> Word8 -> Word16
-merge h l =
-  let high = fromIntegral h :: Word16
-      low = fromIntegral l :: Word16
-   in shiftL high 8 .|. low
-
-split :: Word16 -> [Word8]
-split = unpack . toLazyByteString . word16BE
-
-left :: Word8 -> Word8
-left b = shiftR (b .&. 0xF0) 4
-
-right :: Word8 -> Word8
-right = (.&. 0x0F)
