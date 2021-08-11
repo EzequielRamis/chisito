@@ -1,23 +1,11 @@
 module Decode (Opcode (..), decode) where
 
-import Data.Word (Word8)
-import Helpers
-  ( Addr,
-    Byte,
-    Nibble,
-    Vx,
-    Vy,
-    left,
-    merge,
-    right,
-    show1,
-    show2,
-    show3,
-  )
+import Types (Addr, Byte, Nibble, Vx, Vy)
+import Utils (left, merge, right, show1, show2, show3)
 
-type Decoded = Word8 -> Word8 -> Maybe Opcode
+type Decoded = Byte -> Byte -> Maybe Opcode
 
-type Decoded' = Word8 -> Word8 -> Word8 -> Maybe Opcode
+type Decoded' = Byte -> Byte -> Byte -> Maybe Opcode
 
 data Opcode
   = Cls

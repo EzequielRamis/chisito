@@ -6,9 +6,9 @@ import Data.Bifunctor (first)
 import Data.Bits (shiftL, shiftR, xor, (.&.), (.|.))
 import qualified Data.Vector.Unboxed as V
 import Decode (Opcode (..))
-import Helpers (Addr, Byte, Err, Stack, new, pop, push)
 import Lens.Micro.Platform
 import System.Random (StdGen, newStdGen, randomR)
+import Types
 
 type Registers = V.Vector Byte
 
@@ -44,8 +44,8 @@ fetch v b = v V.! fromIntegral b
 update :: (V.Unbox a) => V.Vector a -> V.Vector a -> V.Vector a
 update a b = V.update_ a (V.generate (V.length b) id) b
 
-newGame :: IO Game
-newGame =
+newGame :: Program -> IO Game
+newGame p =
   do
     s <- newStdGen
     return
@@ -55,7 +55,7 @@ newGame =
           _i = 0x0,
           _dt = 0x0,
           _st = 0x0,
-          _memory = V.replicate 4096 0x0,
+          _memory = V.replicate 4096 0x0 V.// zip [0x200 :: Int ..] p,
           _stack = new 16,
           _registers = V.replicate 16 0x0,
           _display = clear,
@@ -230,5 +230,14 @@ exec (Rnd vx b) g =
   where
     (rnd, gen) = randomR (0x0 :: Byte, 0xFF :: Byte) (_seed g)
     z = rnd .&. b
+--
+
+-- Display n-byte sprite starting at memory location I at (Vx, Vy), set VF = collision
+exec (Drw vx vy nb) g = undefined
+  where
+    start = fromIntegral $ _i g - 1 :: Int
+    mem = _memory g
+    n = fromIntegral nb :: Int
+    sprite = (V.take n . V.drop start) mem
 --
 exec _ _ = undefined
