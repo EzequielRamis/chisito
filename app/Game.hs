@@ -1,14 +1,16 @@
 {-# LANGUAGE TemplateHaskell #-}
 
-module Game where
+module Game (newGame, exec, Game (..)) where
 
+import Control.Concurrent.MVar
 import Data.Bifunctor (first)
 import Data.Bits (shiftL, shiftR, xor, (.&.), (.|.))
 import qualified Data.Vector.Unboxed as V
 import Decode (Opcode (..))
+import Graphics.Vty
 import Lens.Micro.Platform
-import System.Random (StdGen, newStdGen, randomR)
-import Types
+import System.Random
+import Utils
 
 type Registers = V.Vector Byte
 
@@ -16,220 +18,224 @@ type Memory = V.Vector Byte
 
 type Display = V.Vector Bool
 
-type Keyboard = V.Vector Bool
+type Timer = MVar Byte
 
 data Game = Game
   { _pc :: Addr,
     _sp :: Byte,
     _i :: Addr,
-    _dt :: Byte,
-    _st :: Byte,
+    _dt :: Timer,
+    _st :: Timer,
     _memory :: Memory,
     _stack :: Stack Addr,
     _registers :: Registers,
     _display :: Display,
-    _keyboard :: Keyboard,
-    _seed :: StdGen
+    _tui :: Vty
   }
 
-clear :: Display
-clear = V.replicate (32 * 64) False
+clearDisplay :: Display
+clearDisplay = V.replicate (32 * 64) False
 
-fetch :: (V.Unbox a) => V.Vector a -> Byte -> a
-fetch v b = v V.! fromIntegral b
+fetch :: (V.Unbox a) => Byte -> V.Vector a -> a
+fetch b v = v V.! fromIntegral b
 
 (//) :: (V.Unbox a) => V.Vector a -> [(Byte, a)] -> V.Vector a
 (//) a b = a // map (first fromIntegral) b
 
-update :: (V.Unbox a) => V.Vector a -> V.Vector a -> V.Vector a
-update a b = V.update_ a (V.generate (V.length b) id) b
-
-newGame :: Program -> IO Game
-newGame p =
+newGame :: Program -> Config -> IO Game
+newGame p c =
   do
-    s <- newStdGen
+    d <- newMVar 0x0
+    s <- newMVar 0x0
+    t <- mkVty c
     return
       Game
         { _pc = 0x200,
           _sp = 0x0,
           _i = 0x0,
-          _dt = 0x0,
-          _st = 0x0,
+          _dt = d,
+          _st = s,
           _memory = V.replicate 4096 0x0 V.// zip [0x200 :: Int ..] p,
-          _stack = new 16,
+          _stack = newStack 16,
           _registers = V.replicate 16 0x0,
-          _display = clear,
-          _keyboard = V.replicate 16 False,
-          _seed = s
+          _display = clearDisplay,
+          _tui = t
         }
 
 makeLenses ''Game
 
-exec :: Opcode -> Game -> Either Err Game
+returnG :: Game -> IO (Either Err Game)
+returnG = return . return
+
+returnE :: Err -> IO (Either Err Game)
+returnE = return . Left
+
+exec :: Opcode -> Game -> IO (Either Err Game)
 --
 
 -- Clear the display
-exec Cls g = return $ g & set display clear
+exec Cls g = returnG $ g & set display clearDisplay
 --
 
 -- Return from a subroutine
 exec Ret g = do
-  (s, a) <- pop $ _stack g
-  return $
-    g & over sp (\p -> p - 1)
-      & set stack s
-      & set pc a
-
+  case pop $ g ^. stack of
+    Left e -> returnE e
+    Right (s, a) ->
+      returnG $
+        g & over sp (\p -> p - 1)
+          & set stack s
+          & set pc a
 --
 
 -- Jump to location addr
-exec (Jp addr) g = return $ g & set pc addr
+exec (Jp addr) g = returnG $ g & set pc addr
 --
 
 -- Call subroutine at addr
 exec (Call addr) g = do
-  s <- _pc g `push` _stack g
-  return $
-    g & over sp (+ 1)
-      & set stack s
-      & set pc addr
+  case push (g ^. pc) (g ^. stack) of
+    Left e -> returnE e
+    Right s ->
+      returnG $
+        g & over sp (+ 1)
+          & set stack s
+          & set pc addr
 --
 
 -- Skip next instruction if Vx = byte
 exec (SeB vx b) g
-  | x == b = return $ g & over pc (+ 2)
-  | otherwise = return g
+  | x == b = returnG $ g & over pc (+ 2)
+  | otherwise = returnG g
   where
-    x = _registers g `fetch` vx
+    x = fetch vx $ g ^. registers
 --
 
 -- Skip next instruction if Vx != byte
 exec (SneB vx b) g
-  | x /= b = return $ g & over pc (+ 2)
-  | otherwise = return g
+  | x /= b = returnG $ g & over pc (+ 2)
+  | otherwise = returnG g
   where
-    x = _registers g `fetch` vx
+    x = fetch vx $ g ^. registers
 --
 
 -- Skip next instruction if Vx = Vy
 exec (Se vx vy) g
-  | x == y = return $ g & over pc (+ 2)
-  | otherwise = return g
+  | x == y = returnG $ g & over pc (+ 2)
+  | otherwise = returnG g
   where
-    x = _registers g `fetch` vx
-    y = _registers g `fetch` vy
+    x = fetch vx $ g ^. registers
+    y = fetch vy $ g ^. registers
 --
 
 -- Set Vx = byte
-exec (LdB vx b) g = return $ g & over registers (// [(vx, b)])
+exec (LdB vx b) g = returnG $ g & over registers (// [(vx, b)])
 --
 
 -- Set Vx = Vx + kk
-exec (AddB vx b) g = return $ g & over registers (// [(vx, x + b)])
+exec (AddB vx b) g = returnG $ g & over registers (// [(vx, x + b)])
   where
-    x = _registers g `fetch` vx
+    x = fetch vx $ g ^. registers
 --
 
 -- Set Vx = Vy
-exec (Ld vx vy) g = return $ g & over registers (// [(vx, y)])
+exec (Ld vx vy) g = returnG $ g & over registers (// [(vx, y)])
   where
-    y = _registers g `fetch` vy
+    y = fetch vy $ g ^. registers
 --
 
 -- Set Vx = Vx OR Vy
-exec (Or vx vy) g = return $ g & over registers (// [(vx, z)])
+exec (Or vx vy) g = returnG $ g & over registers (// [(vx, z)])
   where
-    x = _registers g `fetch` vx
-    y = _registers g `fetch` vy
+    x = fetch vx $ g ^. registers
+    y = fetch vy $ g ^. registers
     z = x .|. y
 --
 
 -- Set Vx = Vx AND Vy
-exec (And vx vy) g = return $ g & over registers (// [(vx, z)])
+exec (And vx vy) g = returnG $ g & over registers (// [(vx, z)])
   where
-    x = _registers g `fetch` vx
-    y = _registers g `fetch` vy
+    x = fetch vx $ g ^. registers
+    y = fetch vy $ g ^. registers
     z = x .&. y
 --
 
 -- Set Vx = Vx XOR Vy
-exec (Xor vx vy) g = return $ g & over registers (// [(vx, z)])
+exec (Xor vx vy) g = returnG $ g & over registers (// [(vx, z)])
   where
-    x = _registers g `fetch` vx
-    y = _registers g `fetch` vy
+    x = fetch vx $ g ^. registers
+    y = fetch vy $ g ^. registers
     z = xor x y
 --
 
 -- Set Vx = Vx + Vy, set VF = carry
-exec (Add vx vy) g = return $ g & over registers (// [(vx, z), (0xF, carry)])
+exec (Add vx vy) g = returnG $ g & over registers (// [(vx, z), (0xF, carry)])
   where
-    x = _registers g `fetch` vx
-    y = _registers g `fetch` vy
+    x = fetch vx $ g ^. registers
+    y = fetch vy $ g ^. registers
     z = x + y
     carry = if z > 0xFF then 1 else 0 :: Byte
 --
 
 -- Set Vx = Vx - Vy, set VF = NOT borrow
-exec (Sub vx vy) g = return $ g & over registers (// [(vx, z), (0xF, borrow)])
+exec (Sub vx vy) g = returnG $ g & over registers (// [(vx, z), (0xF, borrow)])
   where
-    x = _registers g `fetch` vx
-    y = _registers g `fetch` vy
+    x = fetch vx $ g ^. registers
+    y = fetch vy $ g ^. registers
     z = x - y
     borrow = if x > y then 1 else 0 :: Byte
 --
 
 -- Set Vx = Vx SHR 1 (https://tobiasvl.github.io/blog/write-a-chip-8-emulator/#8xy6-and-8xye-shift)
-exec (Shr vx) g = return $ g & over registers (// [(vx, d), (0xF, z)])
+exec (Shr vx) g = returnG $ g & over registers (// [(vx, d), (0xF, z)])
   where
-    x = _registers g `fetch` vx
+    x = fetch vx $ g ^. registers
     z = if x .&. 0x0F == 0x01 then 1 else 0
     d = shiftR x 1
 --
 
 -- Set Vx = Vy - Vx, set VF = NOT borrow
-exec (Subn vx vy) g = return $ g & over registers (// [(vx, z), (0xF, borrow)])
+exec (Subn vx vy) g = returnG $ g & over registers (// [(vx, z), (0xF, borrow)])
   where
-    x = _registers g `fetch` vx
-    y = _registers g `fetch` vy
+    x = fetch vx $ g ^. registers
+    y = fetch vy $ g ^. registers
     z = y - x
     borrow = if y > x then 1 else 0 :: Byte
 --
 
 -- Set Vx = Vx SHL 1 (https://tobiasvl.github.io/blog/write-a-chip-8-emulator/#8xy6-and-8xye-shift)
-exec (Shl vx) g = return $ g & over registers (// [(vx, d), (0xF, z)])
+exec (Shl vx) g = returnG $ g & over registers (// [(vx, d), (0xF, z)])
   where
-    x = _registers g `fetch` vx
+    x = fetch vx $ g ^. registers
     z = if x .&. 0xF0 == 0x10 then 1 else 0
     d = shiftL x 1
 --
 
 -- Skip next instruction if Vx != Vy
 exec (Sne vx vy) g
-  | x /= y = return $ g & over pc (+ 2)
-  | otherwise = return g
+  | x /= y = returnG $ g & over pc (+ 2)
+  | otherwise = returnG g
   where
-    x = _registers g `fetch` vx
-    y = _registers g `fetch` vy
+    x = fetch vx $ g ^. registers
+    y = fetch vy $ g ^. registers
 --
 
 -- Set I = addr
-exec (LdI addr) g = return $ g & set i addr
+exec (LdI addr) g = returnG $ g & set i addr
 --
 
 -- Jump to location addr + V0
-exec (JpV addr) g = return $ g & set pc (addr + v)
+exec (JpV addr) g = returnG $ g & set pc (addr + v)
   where
-    v = fromIntegral $ _registers g `fetch` 0x0 :: Addr
+    v = fromIntegral $ fetch 0x0 $ g ^. registers
 --
 
 -- Set Vx = random byte AND byte
-exec (Rnd vx b) g =
-  return $
+exec (Rnd vx b) g = do
+  rnd <- randomRIO (0x0, 0xFF)
+  let z = rnd .&. b
+  returnG $
     g & over registers (// [(vx, z)])
-      & set seed gen
-  where
-    (rnd, gen) = randomR (0x0 :: Byte, 0xFF :: Byte) (_seed g)
-    z = rnd .&. b
 --
 
 -- Display n-byte sprite starting at memory location I at (Vx, Vy), set VF = collision
@@ -240,4 +246,134 @@ exec (Drw vx vy nb) g = undefined
     n = fromIntegral nb :: Int
     sprite = (V.take n . V.drop start) mem
 --
-exec _ _ = undefined
+
+-- Skip next instruction if key with the value of Vx is pressed
+exec (Skp vx) g = do
+  event <- nextEventNonblocking $ g ^. tui
+  case event of
+    Just (EvKey key _) -> do
+      let k = keyVal key defaultKeymap
+      case k of
+        Just b ->
+          if b == x
+            then skip
+            else continue
+        Nothing -> continue
+    _ -> continue
+  where
+    x = fetch vx $ g ^. registers
+    continue = returnG g
+    skip = returnG $ g & over pc (+ 2)
+--
+
+-- Skip next instruction if key with the value of Vx is not pressed
+exec (Sknp vx) g = do
+  event <- nextEventNonblocking $ g ^. tui
+  case event of
+    Just (EvKey key _) -> do
+      let k = keyVal key defaultKeymap
+      case k of
+        Just b ->
+          if b == x
+            then continue
+            else skip
+        Nothing -> skip
+    _ -> skip
+  where
+    x = fetch vx $ g ^. registers
+    continue = returnG g
+    skip = returnG $ g & over pc (+ 2)
+--
+
+-- Set Vx = delay timer value
+exec (LdVDT vx) g = do
+  d <- readMVar (_dt g)
+  returnG $ g & over registers (// [(vx, d)])
+--
+
+-- Wait for a key press, store the value of the key in Vx
+exec (LdK vx) g = do
+  event <- nextEvent $ g ^. tui
+  case event of
+    EvKey key _ -> do
+      let k = keyVal key defaultKeymap
+      case k of
+        Just b -> returnG $ g & over registers (// [(vx, b)])
+        Nothing -> retry
+    _ -> retry
+  where
+    retry = exec (LdK vx) g
+--
+
+-- Set delay timer = Vx
+exec (LdDTV vx) g = do
+  _ <- swapMVar (g ^. dt) x
+  returnG g
+  where
+    x = fetch vx $ g ^. registers
+--
+
+-- Set sound timer = Vx
+exec (LdST vx) g = do
+  _ <- swapMVar (g ^. st) x
+  returnG g
+  where
+    x = fetch vx $ g ^. registers
+--
+
+-- Set I = I + Vx
+exec (AddI vx) g = do
+  returnG $ g & over i (+ x)
+  where
+    x = fromIntegral $ fetch vx $ g ^. registers
+--
+
+-- Set I = location of sprite for digit Vx
+exec (LdFV vx) g = do
+  returnG $ g & set i (fontStartAddr + fontHeight * digit)
+  where
+    digit = fromIntegral $ (.&. 0x0F) $ fetch vx $ g ^. registers
+--
+
+-- Store BCD representation of Vx in memory locations I, I+1, and I+2
+exec (LdBV vx) g = do
+  returnG $
+    g
+      & over
+        memory
+        ( V.//
+            [ (loc, hnds),
+              (loc + 1, tens),
+              (loc + 2, ones)
+            ]
+        )
+  where
+    x = fetch vx $ g ^. registers
+    hnds = div x 100
+    tens = mod (div x 10) 10
+    ones = mod x 10
+    loc = fromIntegral $ g ^. i
+--
+
+-- Store registers V0 through Vx in memory starting at location I
+exec (LdIV vx) g = do
+  returnG $ g & over memory (`V.update` rgs)
+  where
+    len = fromIntegral vx + 1
+    loc = fromIntegral $ g ^. i
+    ixs = V.generate len (loc +)
+    vls = V.take len (g ^. registers)
+    rgs = V.zip ixs vls
+--
+
+-- Read registers V0 through Vx from memory starting at location I
+exec (LdVI vx) g = do
+  returnG $ g & over registers (`V.update` rgs)
+  where
+    len = fromIntegral vx + 1
+    loc = fromIntegral $ g ^. i
+    ixs = V.generate len id
+    vls = V.take len $ V.drop loc (g ^. memory)
+    rgs = V.zip ixs vls
+
+--
