@@ -90,8 +90,9 @@ instance Show Opcode where
   show (LdIV x) = "LD [I], V" ++ show1 x
   show (LdVI x) = "LD V" ++ show1 x ++ ", [I]"
 
-decode :: Decoded
-decode h = op (left h) (right h)
+decode :: [Byte] -> Maybe Opcode
+decode [h, l] = op (left h) (right h) l
+decode _ = Nothing
 
 op :: Decoded'
 op 0x0 h l = op0 h l

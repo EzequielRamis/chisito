@@ -1,6 +1,6 @@
 {-# LANGUAGE TemplateHaskell #-}
 
-module Game (newGame, exec, Game (..)) where
+module Game (newGame, exec, Game (..), Timer, fetch, next) where
 
 import Control.Concurrent.MVar
 import Data.Bifunctor (first)
@@ -12,7 +12,7 @@ import Data.Word (byteSwap64)
 import Decode (Opcode (..))
 import Graphics.Vty
 import Lens.Micro.Platform
-import System.Random
+import System.Random (randomRIO)
 import Utils
 
 type Registers = V.Vector Byte
@@ -39,14 +39,14 @@ data Game = Game
 blankDisplay :: Display
 blankDisplay = V.replicate 32 0x0
 
-fetch :: (V.Unbox a) => Byte -> V.Vector a -> a
-fetch b v = v V.! fromIntegral b
+regVal :: (V.Unbox a) => Byte -> V.Vector a -> a
+regVal b v = v V.! fromIntegral b
 
 (//) :: (V.Unbox a) => V.Vector a -> [(Byte, a)] -> V.Vector a
 (//) a b = a // map (first fromIntegral) b
 
-newGame :: Program -> Config -> IO Game
-newGame p c =
+newGame :: Config -> Program -> IO Game
+newGame c p =
   do
     d <- newMVar 0x0
     s <- newMVar 0x0
@@ -67,11 +67,20 @@ newGame p c =
 
 makeLenses ''Game
 
+fetch :: Game -> [Byte]
+fetch g = (V.toList . V.take 2 . V.drop p) mem
+  where
+    mem = g ^. memory
+    p = fromIntegral $ g ^. pc
+
 returnG :: Game -> IO (Either Err Game)
 returnG = return . return
 
 returnE :: Err -> IO (Either Err Game)
 returnE = return . Left
+
+next :: Game -> IO (Either Err Game)
+next g = returnG $ g & over pc (+ 1)
 
 exec :: Opcode -> Game -> IO (Either Err Game)
 --
@@ -113,7 +122,7 @@ exec (SeB vx b) g
   | x == b = returnG $ g & over pc (+ 2)
   | otherwise = returnG g
   where
-    x = fetch vx $ g ^. registers
+    x = regVal vx $ g ^. registers
 --
 
 -- Skip next instruction if Vx != byte
@@ -121,7 +130,7 @@ exec (SneB vx b) g
   | x /= b = returnG $ g & over pc (+ 2)
   | otherwise = returnG g
   where
-    x = fetch vx $ g ^. registers
+    x = regVal vx $ g ^. registers
 --
 
 -- Skip next instruction if Vx = Vy
@@ -129,8 +138,8 @@ exec (Se vx vy) g
   | x == y = returnG $ g & over pc (+ 2)
   | otherwise = returnG g
   where
-    x = fetch vx $ g ^. registers
-    y = fetch vy $ g ^. registers
+    x = regVal vx $ g ^. registers
+    y = regVal vy $ g ^. registers
 --
 
 -- Set Vx = byte
@@ -140,44 +149,44 @@ exec (LdB vx b) g = returnG $ g & over registers (// [(vx, b)])
 -- Set Vx = Vx + kk
 exec (AddB vx b) g = returnG $ g & over registers (// [(vx, x + b)])
   where
-    x = fetch vx $ g ^. registers
+    x = regVal vx $ g ^. registers
 --
 
 -- Set Vx = Vy
 exec (Ld vx vy) g = returnG $ g & over registers (// [(vx, y)])
   where
-    y = fetch vy $ g ^. registers
+    y = regVal vy $ g ^. registers
 --
 
 -- Set Vx = Vx OR Vy
 exec (Or vx vy) g = returnG $ g & over registers (// [(vx, z)])
   where
-    x = fetch vx $ g ^. registers
-    y = fetch vy $ g ^. registers
+    x = regVal vx $ g ^. registers
+    y = regVal vy $ g ^. registers
     z = x .|. y
 --
 
 -- Set Vx = Vx AND Vy
 exec (And vx vy) g = returnG $ g & over registers (// [(vx, z)])
   where
-    x = fetch vx $ g ^. registers
-    y = fetch vy $ g ^. registers
+    x = regVal vx $ g ^. registers
+    y = regVal vy $ g ^. registers
     z = x .&. y
 --
 
 -- Set Vx = Vx XOR Vy
 exec (Xor vx vy) g = returnG $ g & over registers (// [(vx, z)])
   where
-    x = fetch vx $ g ^. registers
-    y = fetch vy $ g ^. registers
+    x = regVal vx $ g ^. registers
+    y = regVal vy $ g ^. registers
     z = xor x y
 --
 
 -- Set Vx = Vx + Vy, set VF = carry
 exec (Add vx vy) g = returnG $ g & over registers (// [(vx, z), (0xF, carry)])
   where
-    x = fetch vx $ g ^. registers
-    y = fetch vy $ g ^. registers
+    x = regVal vx $ g ^. registers
+    y = regVal vy $ g ^. registers
     z = x + y
     carry = if z > 0xFF then 1 else 0 :: Byte
 --
@@ -185,8 +194,8 @@ exec (Add vx vy) g = returnG $ g & over registers (// [(vx, z), (0xF, carry)])
 -- Set Vx = Vx - Vy, set VF = NOT borrow
 exec (Sub vx vy) g = returnG $ g & over registers (// [(vx, z), (0xF, borrow)])
   where
-    x = fetch vx $ g ^. registers
-    y = fetch vy $ g ^. registers
+    x = regVal vx $ g ^. registers
+    y = regVal vy $ g ^. registers
     z = x - y
     borrow = if x > y then 1 else 0 :: Byte
 --
@@ -194,7 +203,7 @@ exec (Sub vx vy) g = returnG $ g & over registers (// [(vx, z), (0xF, borrow)])
 -- Set Vx = Vx SHR 1 (https://tobiasvl.github.io/blog/write-a-chip-8-emulator/#8xy6-and-8xye-shift)
 exec (Shr vx) g = returnG $ g & over registers (// [(vx, d), (0xF, z)])
   where
-    x = fetch vx $ g ^. registers
+    x = regVal vx $ g ^. registers
     z = if x .&. 0x0F == 0x01 then 1 else 0
     d = shiftR x 1
 --
@@ -202,8 +211,8 @@ exec (Shr vx) g = returnG $ g & over registers (// [(vx, d), (0xF, z)])
 -- Set Vx = Vy - Vx, set VF = NOT borrow
 exec (Subn vx vy) g = returnG $ g & over registers (// [(vx, z), (0xF, borrow)])
   where
-    x = fetch vx $ g ^. registers
-    y = fetch vy $ g ^. registers
+    x = regVal vx $ g ^. registers
+    y = regVal vy $ g ^. registers
     z = y - x
     borrow = if y > x then 1 else 0 :: Byte
 --
@@ -211,7 +220,7 @@ exec (Subn vx vy) g = returnG $ g & over registers (// [(vx, z), (0xF, borrow)])
 -- Set Vx = Vx SHL 1 (https://tobiasvl.github.io/blog/write-a-chip-8-emulator/#8xy6-and-8xye-shift)
 exec (Shl vx) g = returnG $ g & over registers (// [(vx, d), (0xF, z)])
   where
-    x = fetch vx $ g ^. registers
+    x = regVal vx $ g ^. registers
     z = if x .&. 0xF0 == 0x10 then 1 else 0
     d = shiftL x 1
 --
@@ -221,8 +230,8 @@ exec (Sne vx vy) g
   | x /= y = returnG $ g & over pc (+ 2)
   | otherwise = returnG g
   where
-    x = fetch vx $ g ^. registers
-    y = fetch vy $ g ^. registers
+    x = regVal vx $ g ^. registers
+    y = regVal vy $ g ^. registers
 --
 
 -- Set I = addr
@@ -232,7 +241,7 @@ exec (LdI addr) g = returnG $ g & set i addr
 -- Jump to location addr + V0
 exec (JpV addr) g = returnG $ g & set pc (addr + v)
   where
-    v = fromIntegral $ fetch 0x0 $ g ^. registers
+    v = fromIntegral $ regVal 0x0 $ g ^. registers
 --
 
 -- Set Vx = random byte AND byte
@@ -251,8 +260,8 @@ exec (Drw vx vy nb) g = do
       & over registers (// [(0xF, collision)])
   where
     -- Wrapped coordinates
-    x = fromIntegral $ mod (fetch vx $ g ^. registers) 64
-    y = fromIntegral $ mod (fetch vy $ g ^. registers) 32
+    x = fromIntegral $ mod (regVal vx $ g ^. registers) 64
+    y = fromIntegral $ mod (regVal vy $ g ^. registers) 32
     -- Fetched sprite
     loc = fromIntegral $ g ^. i
     n = fromIntegral nb
@@ -286,7 +295,7 @@ exec (Skp vx) g = do
         Nothing -> continue
     _ -> continue
   where
-    x = fetch vx $ g ^. registers
+    x = regVal vx $ g ^. registers
     continue = returnG g
     skip = returnG $ g & over pc (+ 2)
 --
@@ -305,7 +314,7 @@ exec (Sknp vx) g = do
         Nothing -> skip
     _ -> skip
   where
-    x = fetch vx $ g ^. registers
+    x = regVal vx $ g ^. registers
     continue = returnG g
     skip = returnG $ g & over pc (+ 2)
 --
@@ -335,7 +344,7 @@ exec (LdDTV vx) g = do
   _ <- swapMVar (g ^. dt) x
   returnG g
   where
-    x = fetch vx $ g ^. registers
+    x = regVal vx $ g ^. registers
 --
 
 -- Set sound timer = Vx
@@ -343,21 +352,21 @@ exec (LdST vx) g = do
   _ <- swapMVar (g ^. st) x
   returnG g
   where
-    x = fetch vx $ g ^. registers
+    x = regVal vx $ g ^. registers
 --
 
 -- Set I = I + Vx
 exec (AddI vx) g = do
   returnG $ g & over i (+ x)
   where
-    x = fromIntegral $ fetch vx $ g ^. registers
+    x = fromIntegral $ regVal vx $ g ^. registers
 --
 
 -- Set I = location of sprite for digit Vx
 exec (LdFV vx) g = do
   returnG $ g & set i (fontStartAddr + fontHeight * digit)
   where
-    digit = fromIntegral $ (.&. 0x0F) $ fetch vx $ g ^. registers
+    digit = fromIntegral $ (.&. 0x0F) $ regVal vx $ g ^. registers
 --
 
 -- Store BCD representation of Vx in memory locations I, I+1, and I+2
@@ -373,7 +382,7 @@ exec (LdBV vx) g = do
             ]
         )
   where
-    x = fetch vx $ g ^. registers
+    x = regVal vx $ g ^. registers
     hnds = div x 100
     tens = mod (div x 10) 10
     ones = mod x 10

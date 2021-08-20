@@ -3,42 +3,44 @@ module Main where
 import Control.Concurrent.MVar
 import Control.Monad
 import qualified Data.ByteString as B
+import Decode
 import GHC.Conc
 import Game
 import Graphics.Vty
 import Utils
 
-second :: Int
-second = 1000000
-
-sixtyHz :: Int
-sixtyHz = div second 60
-
-ticksPerSec :: Int -> Int
-ticksPerSec = div second
-
 main :: IO ()
 main = do
+  bytecode <- B.readFile ""
   cfg <- standardIOConfig
-  game <- newGame [] cfg
+  game <- newGame cfg $ program bytecode
   _ <-
     forkIO $ do
       forever $ do
-        threadDelay second
-        d <- readMVar $ _dt game
-        let line = string defAttr $ show d
-            pic = picForImage line
-        update (_tui game) pic
-        swapMVar (_dt game) 100
+        threadDelay $ hz 60
+        _ <- decrement $ _dt game
+        decrement $ _st game
   _ <-
     forever $ do
-      threadDelay sixtyHz
-      let decrement t = do
-            x <- readMVar t
-            if x == 0 then swapMVar t 0 else swapMVar t $ x - 1
-      _ <- decrement $ _dt game
-      decrement $ _st game
+      threadDelay $ hz 700
+      let bytes = fetch game
+      case decode bytes of
+        Just op -> do
+          _ <- exec op game
+          next game
+        Nothing -> next game
   return ()
 
 program :: B.ByteString -> Program
 program = swapEnd . B.unpack
+
+second :: Int
+second = 1000000
+
+hz :: Int -> Int
+hz = div second
+
+decrement :: Timer -> IO Byte
+decrement t = do
+  x <- readMVar t
+  if x == 0 then return x else swapMVar t $ x - 1
