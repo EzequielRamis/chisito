@@ -5,7 +5,10 @@ module Game (newGame, exec, Game (..)) where
 import Control.Concurrent.MVar
 import Data.Bifunctor (first)
 import Data.Bits (shiftL, shiftR, xor, (.&.), (.|.))
+import Data.Bits.Bitwise (toListBE)
+import Data.List (group)
 import qualified Data.Vector.Unboxed as V
+import Data.Word (byteSwap64)
 import Decode (Opcode (..))
 import Graphics.Vty
 import Lens.Micro.Platform
@@ -16,7 +19,7 @@ type Registers = V.Vector Byte
 
 type Memory = V.Vector Byte
 
-type Display = V.Vector Bool
+type Display = V.Vector PixelRow
 
 type Timer = MVar Byte
 
@@ -33,8 +36,8 @@ data Game = Game
     _tui :: Vty
   }
 
-clearDisplay :: Display
-clearDisplay = V.replicate (32 * 64) False
+blankDisplay :: Display
+blankDisplay = V.replicate 32 0x0
 
 fetch :: (V.Unbox a) => Byte -> V.Vector a -> a
 fetch b v = v V.! fromIntegral b
@@ -58,7 +61,7 @@ newGame p c =
           _memory = V.replicate 4096 0x0 V.// zip [0x200 :: Int ..] p,
           _stack = newStack 16,
           _registers = V.replicate 16 0x0,
-          _display = clearDisplay,
+          _display = blankDisplay,
           _tui = t
         }
 
@@ -74,7 +77,9 @@ exec :: Opcode -> Game -> IO (Either Err Game)
 --
 
 -- Clear the display
-exec Cls g = returnG $ g & set display clearDisplay
+exec Cls g = do
+  update (g ^. tui) emptyPicture
+  returnG $ g & set display blankDisplay
 --
 
 -- Return from a subroutine
@@ -239,12 +244,32 @@ exec (Rnd vx b) g = do
 --
 
 -- Display n-byte sprite starting at memory location I at (Vx, Vy), set VF = collision
-exec (Drw vx vy nb) g = undefined
+exec (Drw vx vy nb) g = do
+  draw newDisplay (g ^. tui)
+  returnG $
+    g & set display newDisplay
+      & over registers (// [(0xF, collision)])
   where
-    start = fromIntegral $ _i g - 1 :: Int
-    mem = _memory g
-    n = fromIntegral nb :: Int
-    sprite = (V.take n . V.drop start) mem
+    -- Wrapped coordinates
+    x = fromIntegral $ mod (fetch vx $ g ^. registers) 64
+    y = fromIntegral $ mod (fetch vy $ g ^. registers) 32
+    -- Fetched sprite
+    loc = fromIntegral $ g ^. i
+    n = fromIntegral nb
+    sprite = V.take n $ V.drop loc (g ^. memory)
+    --
+    oldDisplay = g ^. display
+    -- Place sprite at x-coordinate
+    rowMask = V.map (\r -> shiftR (byteSwap64 $ fromIntegral r) x) sprite
+    -- Place sprite at y-coordinate and get mask
+    ixs = V.generate n (+ y)
+    displayMask = V.unsafeUpdate blankDisplay $ V.zip ixs rowMask
+    -- If two bits are 1, it means they are collided
+    zipDisplay = V.zip oldDisplay displayMask
+    collided (old, new) = old .&. new > 0
+    collision = if V.any collided zipDisplay then 1 else 0 :: Byte
+    --
+    newDisplay = V.zipWith xor oldDisplay displayMask
 --
 
 -- Skip next instruction if key with the value of Vx is pressed
@@ -372,8 +397,32 @@ exec (LdVI vx) g = do
   where
     len = fromIntegral vx + 1
     loc = fromIntegral $ g ^. i
-    ixs = V.generate len id
     vls = V.take len $ V.drop loc (g ^. memory)
-    rgs = V.zip ixs vls
+    rgs = V.indexed vls
 
 --
+
+draw :: Display -> Vty -> IO ()
+draw d v = update v pic
+  where
+    pixelRows = map pixelLines $ V.toList d
+    img = vertCat pixelRows
+    pic = picForImage img
+
+pixelLines :: PixelRow -> Image
+pixelLines r = horizCat $ map pixelLine $ group $ toListBE r
+
+pixelLines' :: PixelRow -> Image
+pixelLines' r = horizCat $ map pixel $ toListBE r
+
+pixelLine :: [Bool] -> Image
+pixelLine b@(True : _) = string (defAttr `withBackColor` white) $ concat $ replicate (length b) pixelStr
+pixelLine b@(False : _) = backgroundFill (length b) 1
+pixelLine _ = emptyImage
+
+pixelStr :: String
+pixelStr = "  "
+
+pixel :: Bool -> Image
+pixel True = string (defAttr `withBackColor` white) pixelStr
+pixel False = backgroundFill 1 1

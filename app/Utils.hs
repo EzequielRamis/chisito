@@ -6,7 +6,7 @@ import Data.Bits (shiftL, shiftR, (.&.), (.|.))
 import Data.ByteString.Builder (toLazyByteString, word16BE)
 import Data.ByteString.Lazy (unpack)
 import Data.List (elemIndex, uncons)
-import Data.Word (Word16, Word8)
+import Data.Word (Word16, Word64, Word8)
 import Graphics.Vty.Input.Events
 import Lens.Micro.Platform (makeLenses, over, set, (&))
 import Text.Printf (printf)
@@ -25,6 +25,8 @@ type Nibble = Byte
 type Addr = Word16
 
 type Keymap = [Key]
+
+type PixelRow = Word64
 
 data Err = StackOverflow | StackUnderflow
 
