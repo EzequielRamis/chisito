@@ -8,7 +8,8 @@ import Data.ByteString.Lazy (unpack)
 import Data.List (elemIndex, uncons)
 import Data.Word (Word16, Word64, Word8)
 import Graphics.Vty.Input.Events (Key (KChar))
-import Lens.Micro.Platform (makeLenses, over, set, (&))
+import Lens.Micro (over, set, (&))
+import Lens.Micro.TH (makeLenses)
 import Text.Printf (printf)
 import Prelude hiding (max)
 
@@ -45,26 +46,24 @@ newStack n =
       _items = []
     }
 
-push :: a -> Stack a -> Either Err (Stack a)
+push :: a -> Stack a -> Stack a
 push a s
-  | length (_items s) == max s = Left StackOverflow
-  | otherwise = return $ s & over items (a :)
+  | length (_items s) == max s = error $ show StackOverflow
+  | otherwise = s & over items (a :)
 
-view :: Stack a -> Either Err (a, [a])
+view :: Stack a -> (a, [a])
 view s = do
   case uncons $ _items s of
-    Nothing -> Left StackUnderflow
-    Just t -> return t
+    Nothing -> error $ show StackUnderflow
+    Just t -> t
 
-pop :: Stack a -> Either Err (Stack a, a)
+pop :: Stack a -> (Stack a, a)
 pop s = do
-  t <- view s
-  return (s & set items (snd t), fst t)
+  let t = view s
+  (s & set items (snd t), fst t)
 
-peek :: Stack a -> Either Err a
-peek s = do
-  t <- view s
-  return $ fst t
+peek :: Stack a -> a
+peek s = fst $ view s
 
 merge :: Byte -> Byte -> Addr
 merge h l =
