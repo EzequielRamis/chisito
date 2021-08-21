@@ -19,7 +19,8 @@ type Decoded = Byte -> Byte -> Maybe Opcode
 type Decoded' = Byte -> Byte -> Byte -> Maybe Opcode
 
 data Opcode
-  = Cls
+  = Sys Addr -- This one will be ignored but it's there 'cause is not invalid
+  | Cls
   | Ret
   | Jp Addr
   | Call Addr
@@ -55,6 +56,7 @@ data Opcode
   | LdVI Vx
 
 instance Show Opcode where
+  show (Sys addr) = "SYS " ++ show3 addr
   show Cls = "CLS"
   show Ret = "RET"
   show (Jp addr) = "JP " ++ show3 addr
@@ -116,7 +118,7 @@ op _ _ _ = Nothing
 op0 :: Decoded
 op0 0x0 0xE0 = Just Cls
 op0 0x0 0xEE = Just Ret
-op0 _ _ = Nothing
+op0 h l = Just . Sys $ merge h l
 
 op5 :: Decoded'
 op5 x y 0x0 = Just $ Se x y

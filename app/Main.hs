@@ -11,7 +11,7 @@ import Utils
 
 main :: IO ()
 main = do
-  bytecode <- B.readFile ""
+  bytecode <- B.readFile "test/opcode"
   cfg <- standardIOConfig
   game <- newGame cfg $ program bytecode
   _ <-
@@ -20,19 +20,25 @@ main = do
         threadDelay $ hz 60
         _ <- decrement $ _dt game
         decrement $ _st game
-  _ <-
-    forever $ do
-      threadDelay $ hz 700
-      let bytes = fetch game
-      case decode bytes of
-        Just op -> do
-          _ <- exec op game
-          next game
-        Nothing -> next game
-  return ()
+  play game
 
 program :: B.ByteString -> Program
-program = swapEnd . B.unpack
+program = B.unpack
+
+play :: Game -> IO ()
+play game = do
+  threadDelay $ hz 1
+  let bytes = fetch game
+  let game' = next game
+  let mop = decode bytes
+  print $ show game' ++ show bytes ++ show mop
+  case mop of
+    Just op -> do
+      res <- exec op game'
+      case res of
+        Left e -> error $ show e
+        Right suc -> play suc
+    Nothing -> error "asdsad"
 
 second :: Int
 second = 1000000

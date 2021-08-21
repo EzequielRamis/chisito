@@ -1,4 +1,5 @@
 {-# LANGUAGE TemplateHaskell #-}
+{-# OPTIONS_GHC -Wno-orphans #-}
 
 module Game (newGame, exec, Game (..), Timer, fetch, next) where
 
@@ -32,9 +33,16 @@ data Game = Game
     _memory :: Memory,
     _stack :: Stack Addr,
     _registers :: Registers,
-    _display :: Display,
-    _tui :: Vty
+    _display :: Display
+    -- _tui :: Vty
   }
+  deriving (Show)
+
+instance Show (MVar a) where
+  show _ = ""
+
+instance Show Vty where
+  show _ = ""
 
 blankDisplay :: Display
 blankDisplay = V.replicate 32 0x0
@@ -43,14 +51,14 @@ regVal :: (V.Unbox a) => Byte -> V.Vector a -> a
 regVal b v = v V.! fromIntegral b
 
 (//) :: (V.Unbox a) => V.Vector a -> [(Byte, a)] -> V.Vector a
-(//) a b = a // map (first fromIntegral) b
+(//) a b = a V.// map (first fromIntegral) b
 
 newGame :: Config -> Program -> IO Game
 newGame c p =
   do
     d <- newMVar 0x0
     s <- newMVar 0x0
-    t <- mkVty c
+    -- t <- mkVty c
     return
       Game
         { _pc = 0x200,
@@ -58,11 +66,15 @@ newGame c p =
           _i = 0x0,
           _dt = d,
           _st = s,
-          _memory = V.replicate 4096 0x0 V.// zip [0x200 :: Int ..] p,
+          _memory =
+            V.replicate 4096 0x0
+              V.// ( zip [0x200 :: Int ..] p
+                       ++ zip [0x50 ..] font
+                   ),
           _stack = newStack 16,
           _registers = V.replicate 16 0x0,
-          _display = blankDisplay,
-          _tui = t
+          _display = blankDisplay
+          -- _tui = t
         }
 
 makeLenses ''Game
@@ -79,15 +91,19 @@ returnG = return . return
 returnE :: Err -> IO (Either Err Game)
 returnE = return . Left
 
-next :: Game -> IO (Either Err Game)
-next g = returnG $ g & over pc (+ 1)
+next :: Game -> Game
+next g = g & over pc (+ 2)
 
 exec :: Opcode -> Game -> IO (Either Err Game)
 --
 
+-- Jump to a machine code routine at nnn (IGNORE)
+exec (Sys _) g = returnG g
+--
+
 -- Clear the display
 exec Cls g = do
-  update (g ^. tui) emptyPicture
+  -- update (g ^. tui) $ picForImage $ backgroundFill 64 32
   returnG $ g & set display blankDisplay
 --
 
@@ -119,7 +135,7 @@ exec (Call addr) g = do
 
 -- Skip next instruction if Vx = byte
 exec (SeB vx b) g
-  | x == b = returnG $ g & over pc (+ 2)
+  | x == b = returnG $ next g
   | otherwise = returnG g
   where
     x = regVal vx $ g ^. registers
@@ -127,7 +143,7 @@ exec (SeB vx b) g
 
 -- Skip next instruction if Vx != byte
 exec (SneB vx b) g
-  | x /= b = returnG $ g & over pc (+ 2)
+  | x /= b = returnG $ next g
   | otherwise = returnG g
   where
     x = regVal vx $ g ^. registers
@@ -135,7 +151,7 @@ exec (SneB vx b) g
 
 -- Skip next instruction if Vx = Vy
 exec (Se vx vy) g
-  | x == y = returnG $ g & over pc (+ 2)
+  | x == y = returnG $ next g
   | otherwise = returnG g
   where
     x = regVal vx $ g ^. registers
@@ -227,7 +243,7 @@ exec (Shl vx) g = returnG $ g & over registers (// [(vx, d), (0xF, z)])
 
 -- Skip next instruction if Vx != Vy
 exec (Sne vx vy) g
-  | x /= y = returnG $ g & over pc (+ 2)
+  | x /= y = returnG $ next g
   | otherwise = returnG g
   where
     x = regVal vx $ g ^. registers
@@ -254,7 +270,7 @@ exec (Rnd vx b) g = do
 
 -- Display n-byte sprite starting at memory location I at (Vx, Vy), set VF = collision
 exec (Drw vx vy nb) g = do
-  draw newDisplay (g ^. tui)
+  -- draw newDisplay (g ^. tui)
   returnG $
     g & set display newDisplay
       & over registers (// [(0xF, collision)])
@@ -282,41 +298,41 @@ exec (Drw vx vy nb) g = do
 --
 
 -- Skip next instruction if key with the value of Vx is pressed
-exec (Skp vx) g = do
-  event <- nextEventNonblocking $ g ^. tui
-  case event of
-    Just (EvKey key _) -> do
-      let k = keyVal key defaultKeymap
-      case k of
-        Just b ->
-          if b == x
-            then skip
-            else continue
-        Nothing -> continue
-    _ -> continue
-  where
-    x = regVal vx $ g ^. registers
-    continue = returnG g
-    skip = returnG $ g & over pc (+ 2)
+-- exec (Skp vx) g = do
+--   event <- nextEventNonblocking $ g ^. tui
+--   case event of
+--     Just (EvKey key _) -> do
+--       let k = keyVal key defaultKeymap
+--       case k of
+--         Just b ->
+--           if b == x
+--             then skip
+--             else continue
+--         Nothing -> continue
+--     _ -> continue
+--   where
+--     x = regVal vx $ g ^. registers
+--     continue = returnG g
+--     skip = returnG $ next g
 --
 
 -- Skip next instruction if key with the value of Vx is not pressed
-exec (Sknp vx) g = do
-  event <- nextEventNonblocking $ g ^. tui
-  case event of
-    Just (EvKey key _) -> do
-      let k = keyVal key defaultKeymap
-      case k of
-        Just b ->
-          if b == x
-            then continue
-            else skip
-        Nothing -> skip
-    _ -> skip
-  where
-    x = regVal vx $ g ^. registers
-    continue = returnG g
-    skip = returnG $ g & over pc (+ 2)
+-- exec (Sknp vx) g = do
+--   event <- nextEventNonblocking $ g ^. tui
+--   case event of
+--     Just (EvKey key _) -> do
+--       let k = keyVal key defaultKeymap
+--       case k of
+--         Just b ->
+--           if b == x
+--             then continue
+--             else skip
+--         Nothing -> skip
+--     _ -> skip
+--   where
+--     x = regVal vx $ g ^. registers
+--     continue = returnG g
+--     skip = returnG $ next g
 --
 
 -- Set Vx = delay timer value
@@ -326,17 +342,17 @@ exec (LdVDT vx) g = do
 --
 
 -- Wait for a key press, store the value of the key in Vx
-exec (LdK vx) g = do
-  event <- nextEvent $ g ^. tui
-  case event of
-    EvKey key _ -> do
-      let k = keyVal key defaultKeymap
-      case k of
-        Just b -> returnG $ g & over registers (// [(vx, b)])
-        Nothing -> retry
-    _ -> retry
-  where
-    retry = exec (LdK vx) g
+-- exec (LdK vx) g = do
+--   event <- nextEvent $ g ^. tui
+--   case event of
+--     EvKey key _ -> do
+--       let k = keyVal key defaultKeymap
+--       case k of
+--         Just b -> returnG $ g & over registers (// [(vx, b)])
+--         Nothing -> retry
+--     _ -> retry
+--   where
+--     retry = exec (LdK vx) g
 --
 
 -- Set delay timer = Vx
@@ -410,6 +426,7 @@ exec (LdVI vx) g = do
     rgs = V.indexed vls
 
 --
+exec _ g = returnG g
 
 draw :: Display -> Vty -> IO ()
 draw d v = update v pic
@@ -430,7 +447,7 @@ pixelLine b@(False : _) = backgroundFill (length b) 1
 pixelLine _ = emptyImage
 
 pixelStr :: String
-pixelStr = "  "
+pixelStr = "g "
 
 pixel :: Bool -> Image
 pixel True = string (defAttr `withBackColor` white) pixelStr
