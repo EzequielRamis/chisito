@@ -7,7 +7,7 @@ import Data.ByteString.Builder (toLazyByteString, word16BE)
 import Data.ByteString.Lazy (unpack)
 import Data.List (elemIndex, uncons)
 import Data.Word (Word16, Word64, Word8)
-import Graphics.Vty.Input.Events
+import Graphics.Vty.Input.Events (Key (KChar))
 import Lens.Micro.Platform (makeLenses, over, set, (&))
 import Text.Printf (printf)
 import Prelude hiding (max)

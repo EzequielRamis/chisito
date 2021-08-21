@@ -1,17 +1,17 @@
 module Main where
 
-import Control.Concurrent.MVar
-import Control.Monad
+import Control.Concurrent.MVar (readMVar, swapMVar)
+import Control.Monad (forever)
 import qualified Data.ByteString as B
-import Decode
-import GHC.Conc
-import Game
-import Graphics.Vty
-import Utils
+import Decode (decode)
+import GHC.Conc (forkIO, threadDelay)
+import Game (Game (_dt, _st), Timer, exec, fetch, newGame, next)
+import Graphics.Vty (standardIOConfig)
+import Utils (Byte, Program)
 
 main :: IO ()
 main = do
-  bytecode <- B.readFile "test/opcode"
+  bytecode <- B.readFile "games/PONG"
   cfg <- standardIOConfig
   game <- newGame cfg $ program bytecode
   _ <-
@@ -27,11 +27,10 @@ program = B.unpack
 
 play :: Game -> IO ()
 play game = do
-  threadDelay $ hz 1
+  threadDelay $ hz 700
   let bytes = fetch game
   let game' = next game
   let mop = decode bytes
-  print $ show game' ++ show bytes ++ show mop
   case mop of
     Just op -> do
       res <- exec op game'
