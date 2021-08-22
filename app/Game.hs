@@ -361,7 +361,7 @@ exec (AddI vx) g = do
 
 -- Set I = location of sprite for digit Vx
 exec (LdFV vx) g = do
-  return $ g & set i (fontStartAddr + fontHeight * digit)
+  return $ g & set i (0x50 + 5 * digit)
   where
     digit = fromIntegral $ (.&. 0x0F) $ regVal vx $ g ^. registers
 --

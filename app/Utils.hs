@@ -7,7 +7,6 @@ import Data.ByteString.Builder (toLazyByteString, word16BE)
 import Data.ByteString.Lazy (unpack)
 import Data.List (elemIndex, uncons)
 import Data.Word (Word16, Word64, Word8)
-import Graphics.Vty.Input.Events (Key (KChar))
 import Lens.Micro (over, set, (&))
 import Lens.Micro.TH (makeLenses)
 import Text.Printf (printf)
@@ -25,7 +24,7 @@ type Nibble = Byte
 
 type Addr = Word16
 
-type Keymap = [Key]
+type Keymap = [Char]
 
 type PixelRow = Word64
 
@@ -92,7 +91,7 @@ show3 = printf "%03X"
 show4 :: Addr -> String
 show4 = printf "%04X"
 
-keyVal :: Key -> Keymap -> Maybe Byte
+keyVal :: Char -> Keymap -> Maybe Byte
 keyVal k kp = Just fromIntegral <*> elemIndex k kp
 
 defaultKeymap :: Keymap
@@ -106,29 +105,23 @@ defaultKeymap :: Keymap
 --  Z | X | C | V                A | 0 | B | F
 -- ---------------              ---------------
 defaultKeymap =
-  [ KChar 'x',
-    KChar '1',
-    KChar '2',
-    KChar '3',
-    KChar 'q',
-    KChar 'w',
-    KChar 'e',
-    KChar 'a',
-    KChar 's',
-    KChar 'd',
-    KChar 'z',
-    KChar 'c',
-    KChar '4',
-    KChar 'r',
-    KChar 'f',
-    KChar 'v'
+  [ 'x',
+    '1',
+    '2',
+    '3',
+    'q',
+    'w',
+    'e',
+    'a',
+    's',
+    'd',
+    'z',
+    'c',
+    '4',
+    'r',
+    'f',
+    'v'
   ]
-
-fontStartAddr :: Addr
-fontStartAddr = 0x50
-
-fontHeight :: Addr
-fontHeight = 5
 
 font :: [Byte]
 font =

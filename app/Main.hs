@@ -1,65 +1,42 @@
+{-# LANGUAGE OverloadedStrings #-}
+
 module Main where
 
 import Control.Concurrent.MVar (readMVar, swapMVar)
-import Control.Monad (forever)
+import Control.Monad (unless)
 import qualified Data.ByteString as B
-import Data.Char (toLower)
-import qualified Data.Vector.Unboxed.Mutable as MV
 import Decode (decode)
 import GHC.Conc (forkIO, threadDelay)
 import Game (Game (..), Timer, exec, fetch, newGame, suc)
-import Graphics.Vty
-  ( Event (EvKey),
-    Key (KChar),
-    Vty (nextEventNonblocking),
-    mkVty,
-    standardIOConfig,
-  )
-import UI (refresh)
-import Utils
+import SDL hiding (Timer)
+import Utils (Byte, Program)
 
 main :: IO ()
 main = do
-  bytecode <- B.readFile "games/BRIX"
-  cfg <- standardIOConfig
-  vty <- mkVty cfg
-  game <- newGame $ program bytecode
-  _ <-
-    forkIO $ do
-      forever $ do
-        threadDelay $ hz 60
-        _ <- decrement $ _dt game
-        decrement $ _st game
-  _ <-
-    forkIO $ do
-      forever $ do
-        threadDelay $ hz 60
-        me <- nextEventNonblocking vty
-        case me of
-          Just e -> do
-            case e of
-              EvKey (KChar k) _ -> do
-                case keyVal (KChar $ toLower k) defaultKeymap of
-                  Just b -> do
-                    alreadyPressed <- MV.read (_keypad game) (fromIntegral b)
-                    if alreadyPressed
-                      then return ()
-                      else do
-                        MV.write (_keypad game) (fromIntegral b) True
-                        _ <- forkIO $ do
-                          threadDelay $ hz 5
-                          MV.write (_keypad game) (fromIntegral b) False
-                        return ()
-                  Nothing -> return ()
-              _ -> return ()
-          Nothing -> return ()
-  play game vty
+  initialize [InitVideo, InitEvents]
+  window <- createWindow "Chisito" defaultWindow
+  renderer <- createRenderer window (-1) defaultRenderer
+  appLoop renderer
+  destroyWindow window
+
+appLoop :: Renderer -> IO ()
+appLoop renderer = do
+  events <- pollEvents
+  let eventIsQPress event =
+        case eventPayload event of
+          QuitEvent -> True
+          _ -> False
+      qPressed = any eventIsQPress events
+  rendererDrawColor renderer $= V4 0 255 255 255
+  clear renderer
+  present renderer
+  unless qPressed (appLoop renderer)
 
 program :: B.ByteString -> Program
 program = B.unpack
 
-play :: Game -> Vty -> IO ()
-play game vty = do
+play :: Game -> IO ()
+play game = do
   threadDelay $ hz 700
   let bytes = fetch game
   let game' = suc game
@@ -67,8 +44,7 @@ play game vty = do
   case mop of
     Just op -> do
       next <- exec op game'
-      _ <- refresh vty next op
-      play next vty
+      play next
     Nothing -> error $ show bytes
 
 second :: Int
