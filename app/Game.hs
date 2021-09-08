@@ -18,6 +18,16 @@ import Lens.Micro (over, set, (&), (^.))
 import Lens.Micro.TH (makeLenses)
 import System.Random (randomRIO)
 import Utils
+  ( Addr,
+    Byte,
+    PixelRow,
+    Program,
+    Stack,
+    font,
+    newStack,
+    pop,
+    push,
+  )
 
 type Registers = V.Vector Byte
 
