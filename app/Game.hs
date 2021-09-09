@@ -33,7 +33,7 @@ type Registers = V.Vector Byte
 
 type Memory = V.Vector Byte
 
-type Display = V.Vector PixelRow
+type Display = MV.IOVector PixelRow
 
 type Keypad = MV.IOVector Bool
 
@@ -52,7 +52,7 @@ data Game = Game
     _keypad :: Keypad
   }
 
-blankDisplay :: Display
+blankDisplay :: V.Vector PixelRow
 blankDisplay = V.replicate 32 0x0
 
 regVal :: (V.Unbox a) => Byte -> V.Vector a -> a
@@ -67,6 +67,7 @@ newGame p =
     d <- newMVar 0x0
     s <- newMVar 0x0
     k <- MV.replicate 16 False
+    b <- V.thaw blankDisplay
     return
       Game
         { _pc = 0x200,
@@ -81,7 +82,7 @@ newGame p =
                    ),
           _stack = newStack 16,
           _registers = V.replicate 16 0x0,
-          _display = blankDisplay,
+          _display = b,
           _keypad = k
         }
 
@@ -104,7 +105,9 @@ exec (Sys _) g = return g
 --
 
 -- Clear the display
-exec Cls g = return $ g & set display blankDisplay
+exec Cls g = do
+  V.copy (g ^. display) blankDisplay
+  return g
 --
 
 -- Return from a subroutine
@@ -265,10 +268,16 @@ exec (Rnd vx b) g = do
 --
 
 -- Display n-byte sprite starting at memory location I at (Vx, Vy), set VF = collision
-exec (Drw vx vy nb) g =
+exec (Drw vx vy nb) g = do
+  oldDisplay <- V.freeze $ g ^. display
+  let -- If two bits are 1, it means they are collided
+      zipDisplay = V.zip oldDisplay displayMask
+      collided (old, new) = old .&. new > 0
+      collision = if V.any collided zipDisplay then 1 else 0 :: Byte
+      newDisplay = V.zipWith xor oldDisplay displayMask
+  V.copy (g ^. display) newDisplay
   return $
-    g & set display newDisplay
-      & over registers (// [(0xF, collision)])
+    g & over registers (// [(0xF, collision)])
   where
     -- Wrapped coordinates
     x = fromIntegral $ mod (regVal vx $ g ^. registers) 64
@@ -277,19 +286,11 @@ exec (Drw vx vy nb) g =
     loc = fromIntegral $ g ^. i
     n = fromIntegral nb
     sprite = V.take n $ V.drop loc (g ^. memory)
-    --
-    oldDisplay = g ^. display
     -- Place sprite at x-coordinate
     rowMask = V.map (\r -> shiftR (byteSwap64 $ fromIntegral r) x) sprite
     -- Place sprite at y-coordinate and get mask
     (ixs, _) = V.span (< 32) $ V.generate n (+ y)
-    displayMask = V.unsafeUpdate blankDisplay $ V.zip ixs rowMask
-    -- If two bits are 1, it means they are collided
-    zipDisplay = V.zip oldDisplay displayMask
-    collided (old, new) = old .&. new > 0
-    collision = if V.any collided zipDisplay then 1 else 0 :: Byte
-    --
-    newDisplay = V.zipWith xor oldDisplay displayMask
+    displayMask = V.unsafeUpdate (V.replicate 32 0x0) $ V.zip ixs rowMask
 --
 
 -- Skip next instruction if key with the value of Vx is pressed

@@ -5,10 +5,11 @@ module Utils where
 import Data.Bits (shiftL, shiftR, (.&.), (.|.))
 import Data.ByteString.Builder (toLazyByteString, word16BE)
 import Data.ByteString.Lazy (unpack)
-import Data.List (elemIndex, uncons)
+import Data.List (uncons)
 import Data.Word (Word16, Word64, Word8)
 import Lens.Micro (over, set, (&))
 import Lens.Micro.TH (makeLenses)
+import SDL
 import Text.Printf (printf)
 import Prelude hiding (max)
 
@@ -24,7 +25,7 @@ type Nibble = Byte
 
 type Addr = Word16
 
-type Keymap = [Char]
+type Keymap = [Scancode]
 
 type PixelRow = Word64
 
@@ -91,9 +92,6 @@ show3 = printf "%03X"
 show4 :: Addr -> String
 show4 = printf "%04X"
 
-keyVal :: Char -> Keymap -> Maybe Byte
-keyVal k kp = Just fromIntegral <*> elemIndex k kp
-
 defaultKeymap :: Keymap
 -- ---------------              ---------------
 --  1 | 2 | 3 | 4                1 | 2 | 3 | C
@@ -105,22 +103,22 @@ defaultKeymap :: Keymap
 --  Z | X | C | V                A | 0 | B | F
 -- ---------------              ---------------
 defaultKeymap =
-  [ 'x',
-    '1',
-    '2',
-    '3',
-    'q',
-    'w',
-    'e',
-    'a',
-    's',
-    'd',
-    'z',
-    'c',
-    '4',
-    'r',
-    'f',
-    'v'
+  [ ScancodeX,
+    Scancode1,
+    Scancode2,
+    Scancode3,
+    ScancodeQ,
+    ScancodeW,
+    ScancodeE,
+    ScancodeA,
+    ScancodeS,
+    ScancodeD,
+    ScancodeZ,
+    ScancodeC,
+    Scancode4,
+    ScancodeR,
+    ScancodeF,
+    ScancodeV
   ]
 
 font :: [Byte]
