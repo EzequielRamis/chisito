@@ -1,19 +1,25 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RankNTypes #-}
 
 module Main where
 
-import Control.Concurrent.MVar (readMVar, swapMVar)
-import Control.Monad (forever, unless, void)
+import Audio (beep, newDevice, pauseBeep, playBeep)
+import Control.Concurrent
+  ( forkIO,
+    readMVar,
+    swapMVar,
+    threadDelay,
+  )
+import Control.Monad (forever, unless, void, when)
 import qualified Data.ByteString as B
 import Data.List (elemIndex)
 import Data.Maybe (mapMaybe)
 import qualified Data.Vector.Unboxed as V
 import Decode (decode)
-import GHC.Conc (forkIO, threadDelay)
 import Game (Game (..), Timer, exec, fetch, newGame, suc)
 import SDL hiding (Timer)
 import UI (render)
-import Utils
+import Utils (Program, defaultKeymap)
 
 main :: IO ()
 main = do
@@ -36,24 +42,32 @@ load p = do
 
 initWindow :: Game -> IO ()
 initWindow g = do
-  initialize [InitVideo, InitEvents]
+  initialize [InitVideo, InitEvents, InitAudio]
   window <- createWindow "Chisito" defaultWindow
   renderer <- createRenderer window (-1) defaultRenderer
-  refreshIO renderer g
+  device <- newDevice beep
+  refreshIO renderer device g
   destroyWindow window
 
-refreshIO :: Renderer -> Game -> IO ()
-refreshIO r g = do
+refreshIO :: Renderer -> AudioDevice -> Game -> IO ()
+refreshIO r d g = do
   threadDelay $ hz 60
+  -- Screen
   render g r
-  --
+  -- Keypad
   events <- pollEvents
   let keyEvents = mapMaybe eventToKey events
   oldKeys <- V.freeze $ _keypad g
   let newKeys = oldKeys V.// keyEvents
   V.copy (_keypad g) newKeys
+  -- Sound Timer
+  st <- readMVar (_st g)
+  status <- audioDeviceStatus d
+  if st == 0
+    then when (status == Playing) $ pauseBeep d
+    else when (status == Paused) $ playBeep d
   --
-  unless (quitPressed events) $ refreshIO r g
+  unless (quitPressed events) $ refreshIO r d g
 
 keymapping :: KeyboardEventData -> Maybe Int
 keymapping ke = elemIndex (keysymScancode $ keyboardEventKeysym ke) defaultKeymap

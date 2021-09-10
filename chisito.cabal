@@ -26,6 +26,7 @@ executable chisito
     other-modules:    Game,
                       Decode,
                       UI,
+                      Audio,
                       Utils
 
     -- LANGUAGE extensions used by modules in this package.

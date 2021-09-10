@@ -19,7 +19,7 @@ type Decoded = Byte -> Byte -> Maybe Opcode
 type Decoded' = Byte -> Byte -> Byte -> Maybe Opcode
 
 data Opcode
-  = Sys Addr -- This one will be ignored but it's there 'cause is not invalid
+  = Sys Addr -- This one will be ignored but it's there because of compatibility
   | Cls
   | Ret
   | Jp Addr
