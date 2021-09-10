@@ -24,9 +24,11 @@ import Utils
     Program,
     Stack,
     font,
+    height,
     newStack,
     pop,
     push,
+    width,
   )
 
 type Registers = V.Vector Byte
@@ -53,7 +55,7 @@ data Game = Game
   }
 
 blankDisplay :: V.Vector PixelRow
-blankDisplay = V.replicate 32 0x0
+blankDisplay = V.replicate height 0x0
 
 regVal :: (V.Unbox a) => Byte -> V.Vector a -> a
 regVal b v = v V.! fromIntegral b
@@ -280,8 +282,8 @@ exec (Drw vx vy nb) g = do
     g & over registers (// [(0xF, collision)])
   where
     -- Wrapped coordinates
-    x = fromIntegral $ mod (regVal vx $ g ^. registers) 64
-    y = fromIntegral $ mod (regVal vy $ g ^. registers) 32
+    x = fromIntegral $ mod (regVal vx $ g ^. registers) width
+    y = fromIntegral $ mod (regVal vy $ g ^. registers) height
     -- Fetched sprite
     loc = fromIntegral $ g ^. i
     n = fromIntegral nb
@@ -289,8 +291,8 @@ exec (Drw vx vy nb) g = do
     -- Place sprite at x-coordinate
     rowMask = V.map (\r -> shiftR (byteSwap64 $ fromIntegral r) x) sprite
     -- Place sprite at y-coordinate and get mask
-    (ixs, _) = V.span (< 32) $ V.generate n (+ y)
-    displayMask = V.unsafeUpdate (V.replicate 32 0x0) $ V.zip ixs rowMask
+    (ixs, _) = V.span (< height) $ V.generate n (+ y)
+    displayMask = V.unsafeUpdate blankDisplay $ V.zip ixs rowMask
 --
 
 -- Skip next instruction if key with the value of Vx is pressed

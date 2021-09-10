@@ -25,7 +25,7 @@ type Nibble = Byte
 
 type Addr = Word16
 
-type Keymap = [Scancode]
+type Keymap = [Keycode]
 
 type PixelRow = Word64
 
@@ -103,22 +103,22 @@ defaultKeymap :: Keymap
 --  Z | X | C | V                A | 0 | B | F
 -- ---------------              ---------------
 defaultKeymap =
-  [ ScancodeX,
-    Scancode1,
-    Scancode2,
-    Scancode3,
-    ScancodeQ,
-    ScancodeW,
-    ScancodeE,
-    ScancodeA,
-    ScancodeS,
-    ScancodeD,
-    ScancodeZ,
-    ScancodeC,
-    Scancode4,
-    ScancodeR,
-    ScancodeF,
-    ScancodeV
+  [ KeycodeX,
+    Keycode1,
+    Keycode2,
+    Keycode3,
+    KeycodeQ,
+    KeycodeW,
+    KeycodeE,
+    KeycodeA,
+    KeycodeS,
+    KeycodeD,
+    KeycodeZ,
+    KeycodeC,
+    Keycode4,
+    KeycodeR,
+    KeycodeF,
+    KeycodeV
   ]
 
 font :: [Byte]
@@ -204,3 +204,15 @@ font =
     0x80,
     0x80
   ]
+
+second :: Int
+second = 1000000
+
+hz :: Int -> Int
+hz = div second
+
+width :: Integral a => a
+width = 64
+
+height :: Integral a => a
+height = 32

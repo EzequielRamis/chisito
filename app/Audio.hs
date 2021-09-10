@@ -39,7 +39,7 @@ newDevice b = do
             Mandate Signed16BitNativeAudio,
           SDL.openDeviceChannels =
             Mandate Mono,
-          SDL.openDeviceSamples = 4096 * 2,
+          SDL.openDeviceSamples = 4096,
           SDL.openDeviceCallback = audioCB s,
           SDL.openDeviceUsage = ForPlayback,
           SDL.openDeviceName = Nothing
@@ -57,7 +57,7 @@ beep =
   map
     ( \n ->
         let t = fromIntegral n / 48000 :: Double
-            freq = 280
+            freq = 250
          in round (fromIntegral (div maxBound 2 :: Int16) * sin (2 * pi * freq * t))
     )
     [0 :: Int32 ..]
