@@ -1,4 +1,3 @@
-# chisito
-A little chip-8 vm
+# chisito <img src="chisito.jpg" height="24">
 
-![chisito](chisito.jpg)
+A little chip-8 interpreter

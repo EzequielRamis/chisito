@@ -1,10 +1,9 @@
 {-# LANGUAGE TemplateHaskell #-}
 
-module Game (newGame, exec, Game (..), Timer, fetch, suc, Display) where
+module Game (newGame, exec, Game (..), fetch, suc) where
 
 import Control.Concurrent.MVar
-  ( MVar,
-    newMVar,
+  ( newMVar,
     readMVar,
     swapMVar,
   )
@@ -17,12 +16,19 @@ import Decode (Opcode (..))
 import Lens.Micro (over, set, (&), (^.))
 import Lens.Micro.TH (makeLenses)
 import System.Random (randomRIO)
-import Utils
+import Types
   ( Addr,
     Byte,
+    Display,
+    Keypad,
+    Memory,
     PixelRow,
     Program,
-    Stack,
+    Registers,
+    Timer,
+  )
+import Utils
+  ( Stack,
     font,
     height,
     newStack,
@@ -30,16 +36,6 @@ import Utils
     push,
     width,
   )
-
-type Registers = V.Vector Byte
-
-type Memory = V.Vector Byte
-
-type Display = MV.IOVector PixelRow
-
-type Keypad = MV.IOVector Bool
-
-type Timer = MVar Byte
 
 data Game = Game
   { _pc :: Addr,
@@ -217,7 +213,7 @@ exec (Sub vx vy) g = return $ g & over registers (// [(vx, z), (0xF, borrow)])
     borrow = if x > y then 1 else 0 :: Byte
 --
 
--- Set Vx = Vx SHR 1 (https://tobiasvl.github.io/blog/write-a-chip-8-emulator/#8xy6-and-8xye-shift)
+-- Set Vx = Vx SHR 1
 exec (Shr vx) g = return $ g & over registers (// [(vx, d), (0xF, z)])
   where
     x = regVal vx $ g ^. registers
@@ -234,7 +230,7 @@ exec (Subn vx vy) g = return $ g & over registers (// [(vx, z), (0xF, borrow)])
     borrow = if y > x then 1 else 0 :: Byte
 --
 
--- Set Vx = Vx SHL 1 (https://tobiasvl.github.io/blog/write-a-chip-8-emulator/#8xy6-and-8xye-shift)
+-- Set Vx = Vx SHL 1
 exec (Shl vx) g = return $ g & over registers (// [(vx, d), (0xF, z)])
   where
     x = regVal vx $ g ^. registers

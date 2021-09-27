@@ -3,6 +3,7 @@
 module Main where
 
 import Audio (beep, newDevice, pauseBeep, playBeep)
+import Config
 import Control.Concurrent
   ( forkIO,
     readMVar,
@@ -15,8 +16,10 @@ import Data.Int (Int32)
 import Data.List (elemIndex, find)
 import Data.Maybe (mapMaybe)
 import qualified Data.Vector.Unboxed as V
+import Data.Yaml hiding (decode)
 import Decode (decode)
-import Game (Game (..), Timer, exec, fetch, newGame, suc)
+import Game (Game (..), exec, fetch, newGame, suc)
+import Refined (unrefine)
 import SDL
   ( AudioDevice,
     AudioDeviceStatus (Paused, Playing),
@@ -39,13 +42,16 @@ import SDL
     initialize,
     pollEvents,
   )
+import Turtle (encodeString, options)
+import Types
 import UI (render)
-import Utils (Program, defaultKeymap, hz)
+import Utils
 
 main :: IO ()
 main = do
-  bytecode <- B.readFile "games/PONG2"
-  load $ program bytecode
+  chisito <- options "A little chip-8 interpreter" cli
+  config <- decodeFileThrow $ encodeString $ fileConf chisito :: IO GameConfig
+  print config
 
 load :: Program -> IO ()
 load p = do
@@ -104,7 +110,7 @@ refreshIO r d s g = do
   unless (quitPressed events) $ refreshIO r d screen g
 
 keymapping :: KeyboardEventData -> Maybe Int
-keymapping ke = elemIndex (keysymKeycode $ keyboardEventKeysym ke) defaultKeymap
+keymapping ke = elemIndex (keysymKeycode $ keyboardEventKeysym ke) $ unrefine defaultKeymap
 
 eventToKey :: Event -> Maybe (Int, Bool)
 eventToKey e = case eventPayload e of

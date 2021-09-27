@@ -1,12 +1,8 @@
 module Decode (Opcode (..), decode) where
 
+import Types (Addr, Byte, Nibble, Vx, Vy)
 import Utils
-  ( Addr,
-    Byte,
-    Nibble,
-    Vx,
-    Vy,
-    left,
+  ( left,
     merge,
     right,
     show1,

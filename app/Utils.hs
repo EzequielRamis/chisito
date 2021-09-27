@@ -6,28 +6,13 @@ import Data.Bits (shiftL, shiftR, (.&.), (.|.))
 import Data.ByteString.Builder (toLazyByteString, word16BE)
 import Data.ByteString.Lazy (unpack)
 import Data.List (uncons)
-import Data.Word (Word16, Word64, Word8)
 import Lens.Micro (over, set, (&))
 import Lens.Micro.TH (makeLenses)
-import SDL
+import Refined (refineTH)
+import SDL.Input.Keyboard
 import Text.Printf (printf)
+import Types
 import Prelude hiding (max)
-
-type Byte = Word8
-
-type Program = [Byte]
-
-type Vx = Byte
-
-type Vy = Byte
-
-type Nibble = Byte
-
-type Addr = Word16
-
-type Keymap = [Keycode]
-
-type PixelRow = Word64
 
 data Err = StackOverflow | StackUnderflow deriving (Show)
 
@@ -91,35 +76,6 @@ show3 = printf "%03X"
 
 show4 :: Addr -> String
 show4 = printf "%04X"
-
-defaultKeymap :: Keymap
--- ---------------              ---------------
---  1 | 2 | 3 | 4                1 | 2 | 3 | C
--- ---------------              ---------------
---  Q | W | E | R                4 | 5 | 6 | D
--- ---------------     --->     ---------------
---  A | S | D | F                7 | 8 | 9 | E
--- ---------------              ---------------
---  Z | X | C | V                A | 0 | B | F
--- ---------------              ---------------
-defaultKeymap =
-  [ KeycodeX,
-    Keycode1,
-    Keycode2,
-    Keycode3,
-    KeycodeQ,
-    KeycodeW,
-    KeycodeE,
-    KeycodeA,
-    KeycodeS,
-    KeycodeD,
-    KeycodeZ,
-    KeycodeC,
-    Keycode4,
-    KeycodeR,
-    KeycodeF,
-    KeycodeV
-  ]
 
 font :: [Byte]
 font =
@@ -216,3 +172,34 @@ width = 64
 
 height :: Integral a => a
 height = 32
+
+defaultKeymap :: Keymap
+-- ---------------              ---------------
+--  1 | 2 | 3 | 4                1 | 2 | 3 | C
+-- ---------------              ---------------
+--  Q | W | E | R                4 | 5 | 6 | D
+-- ---------------     --->     ---------------
+--  A | S | D | F                7 | 8 | 9 | E
+-- ---------------              ---------------
+--  Z | X | C | V                A | 0 | B | F
+-- ---------------              ---------------
+defaultKeymap =
+  $$( refineTH
+        [ KeycodeX,
+          Keycode1,
+          Keycode2,
+          Keycode3,
+          KeycodeQ,
+          KeycodeW,
+          KeycodeE,
+          KeycodeA,
+          KeycodeS,
+          KeycodeD,
+          KeycodeZ,
+          KeycodeC,
+          Keycode4,
+          KeycodeR,
+          KeycodeF,
+          KeycodeV
+        ]
+    )

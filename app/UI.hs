@@ -7,10 +7,22 @@ import qualified Data.Vector.Unboxed as V
 import Foreign.C.Types (CInt)
 import Game (Game (_display))
 import Lens.Micro ((^.))
-import SDL hiding (Timer, origin)
+import SDL
+  ( Point (P),
+    R1 (_x),
+    R2 (_y),
+    Rectangle (..),
+    Renderer,
+    V2 (..),
+    V4 (V4),
+    clear,
+    fillRects,
+    present,
+    rendererDrawColor,
+    ($=),
+  )
+import Types
 import Utils
-
-type Color = V4 Byte
 
 render :: V2 Int32 -> Game -> Renderer -> IO ()
 render v g r = do
