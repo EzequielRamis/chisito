@@ -14,9 +14,8 @@ import Control.Monad (forever, unless, void, when)
 import qualified Data.ByteString as B
 import Data.Int (Int32)
 import Data.List (elemIndex, find)
-import Data.Maybe (mapMaybe)
+import Data.Maybe (fromJust, mapMaybe)
 import qualified Data.Vector.Unboxed as V
-import Data.Yaml hiding (decode)
 import Decode (decode)
 import Game (Game (..), exec, fetch, newGame, suc)
 import Refined (unrefine)
@@ -49,52 +48,49 @@ import Utils
 
 main :: IO ()
 main = do
-  chisito <- options "A little chip-8 interpreter" cli
-  config <- decodeFileThrow $ encodeString $ fileConf chisito :: IO GameConfig
-  print config
+  chisito <- options "A little chip-8 interpreter" cli >>= orDefault
+  bytestr <- B.readFile $ encodeString $ gameFile chisito
+  config <- readGameConfig $ fromJust $ configFile chisito
+  load (program bytestr) (getGameConfig config)
 
-load :: Program -> IO ()
-load p = do
+load :: Program -> GameConfig -> IO ()
+load p c = do
   game <- newGame p
   -- Init timers
-  void $
-    forkIO $
-      forever $ do
-        threadDelay $ hz 60
-        decrement $ _dt game
-        decrement $ _st game
+  void $ forkIO $ forever $ threadDelay (hz 60) >> decrement (_dt game)
+  void $ forkIO $ forever $ threadDelay (hz 60) >> decrement (_st game)
   --
-  void $ forkIO $ play game
-  initWindow game
+  void $ forkIO $ play game c
+  initWindow game c
 
-play :: Game -> IO ()
-play g = do
-  threadDelay $ hz 700
+play :: Game -> GameConfig -> IO ()
+play g c = do
+  threadDelay $ hz $ unrefine $ fromJust $ tick c
   let bytes = fetch g
   let g' = suc g
   let mop = decode bytes
   case mop of
     Just op -> do
       next <- exec op g'
-      play next
+      play next c
     Nothing -> error $ show bytes
 
-initWindow :: Game -> IO ()
-initWindow g = do
+initWindow :: Game -> GameConfig -> IO ()
+initWindow g c = do
   initialize [InitVideo, InitEvents, InitAudio]
   window <- createWindow "Chisito" defaultWindow
   renderer <- createRenderer window (-1) defaultRenderer
   device <- newDevice beep
-  refreshIO renderer device (fromIntegral <$> windowInitialSize defaultWindow) g
+  refreshIO renderer device (fromIntegral <$> windowInitialSize defaultWindow) g c
   destroyWindow window
 
-refreshIO :: Renderer -> AudioDevice -> V2 Int32 -> Game -> IO ()
-refreshIO r d s g = do
+refreshIO :: Renderer -> AudioDevice -> V2 Int32 -> Game -> GameConfig -> IO ()
+refreshIO r d s g c = do
   threadDelay $ hz 60
   events <- pollEvents
   -- Screen
   let screen = getScreenSize events s
-  render screen g r
+  render screen g c r
   -- Keypad
   let keyEvents = mapMaybe eventToKey events
   oldKeys <- V.freeze $ _keypad g
@@ -107,7 +103,7 @@ refreshIO r d s g = do
     then when (status == Playing) $ pauseBeep d
     else when (status == Paused) $ playBeep d
   --
-  unless (quitPressed events) $ refreshIO r d screen g
+  unless (quitPressed events) $ refreshIO r d screen g c
 
 keymapping :: KeyboardEventData -> Maybe Int
 keymapping ke = elemIndex (keysymKeycode $ keyboardEventKeysym ke) $ unrefine defaultKeymap

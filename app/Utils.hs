@@ -8,8 +8,6 @@ import Data.ByteString.Lazy (unpack)
 import Data.List (uncons)
 import Lens.Micro (over, set, (&))
 import Lens.Micro.TH (makeLenses)
-import Refined (refineTH)
-import SDL.Input.Keyboard
 import Text.Printf (printf)
 import Types
 import Prelude hiding (max)
@@ -161,45 +159,14 @@ font =
     0x80
   ]
 
-second :: Int
+second :: Double
 second = 1000000
 
-hz :: Int -> Int
-hz = div second
+hz :: Double -> Int
+hz = ceiling . (/) second
 
 width :: Integral a => a
 width = 64
 
 height :: Integral a => a
 height = 32
-
-defaultKeymap :: Keymap
--- ---------------              ---------------
---  1 | 2 | 3 | 4                1 | 2 | 3 | C
--- ---------------              ---------------
---  Q | W | E | R                4 | 5 | 6 | D
--- ---------------     --->     ---------------
---  A | S | D | F                7 | 8 | 9 | E
--- ---------------              ---------------
---  Z | X | C | V                A | 0 | B | F
--- ---------------              ---------------
-defaultKeymap =
-  $$( refineTH
-        [ KeycodeX,
-          Keycode1,
-          Keycode2,
-          Keycode3,
-          KeycodeQ,
-          KeycodeW,
-          KeycodeE,
-          KeycodeA,
-          KeycodeS,
-          KeycodeD,
-          KeycodeZ,
-          KeycodeC,
-          Keycode4,
-          KeycodeR,
-          KeycodeF,
-          KeycodeV
-        ]
-    )
