@@ -4,6 +4,14 @@ module Main where
 
 import Audio (beep, newDevice, pauseBeep, playBeep)
 import Config
+  ( Chisito (configFile, gameFile),
+    GameConfig (..),
+    cli,
+    defaultKeymap,
+    getGameConfig,
+    orDefault,
+    readGameConfig,
+  )
 import Control.Concurrent
   ( forkIO,
     readMVar,
@@ -15,6 +23,7 @@ import qualified Data.ByteString as B
 import Data.Int (Int32)
 import Data.List (elemIndex, find)
 import Data.Maybe (fromJust, mapMaybe)
+import Data.Text (append, pack)
 import qualified Data.Vector.Unboxed as V
 import Decode (decode)
 import Game (Game (..), exec, fetch, newGame, suc)
@@ -30,7 +39,8 @@ import SDL
     Keysym (keysymKeycode),
     Renderer,
     V2,
-    WindowConfig (windowInitialSize),
+    WindowConfig (..),
+    WindowMode (..),
     WindowResizedEventData (windowResizedEventSize),
     audioDeviceStatus,
     createRenderer,
@@ -41,31 +51,31 @@ import SDL
     initialize,
     pollEvents,
   )
-import Turtle (encodeString, options)
-import Types
+import Turtle (FilePath, basename, encodeString, options)
+import Types (Program, Tick, Timer)
 import UI (render)
-import Utils
+import Utils (hz)
+import Prelude hiding (FilePath)
 
 main :: IO ()
 main = do
   chisito <- options "A little chip-8 interpreter" cli >>= orDefault
   bytestr <- B.readFile $ encodeString $ gameFile chisito
   config <- readGameConfig $ fromJust $ configFile chisito
-  load (program bytestr) (getGameConfig config)
+  load (program bytestr) (getGameConfig config) (basename $ gameFile chisito)
 
-load :: Program -> GameConfig -> IO ()
-load p c = do
+load :: Program -> GameConfig -> FilePath -> IO ()
+load p c t = do
   game <- newGame p
-  -- Init timers
-  void $ forkIO $ forever $ threadDelay (hz 60) >> decrement (_dt game)
-  void $ forkIO $ forever $ threadDelay (hz 60) >> decrement (_st game)
-  --
+  let initTimer d d' = void $ forkIO $ forever $ delay d >> decrement d'
+  initTimer (delayTimer c) (_dt game)
+  initTimer (soundTimer c) (_st game)
   void $ forkIO $ play game c
-  initWindow game c
+  initWindow game c t
 
 play :: Game -> GameConfig -> IO ()
 play g c = do
-  threadDelay $ hz $ unrefine $ fromJust $ tick c
+  delay $ tick c
   let bytes = fetch g
   let g' = suc g
   let mop = decode bytes
@@ -75,10 +85,10 @@ play g c = do
       play next c
     Nothing -> error $ show bytes
 
-initWindow :: Game -> GameConfig -> IO ()
-initWindow g c = do
+initWindow :: Game -> GameConfig -> FilePath -> IO ()
+initWindow g c t = do
   initialize [InitVideo, InitEvents, InitAudio]
-  window <- createWindow "Chisito" defaultWindow
+  window <- createWindow (append "Chisito - " $ pack $ encodeString t) (getWindowSize $ windowSize c)
   renderer <- createRenderer window (-1) defaultRenderer
   device <- newDevice beep
   refreshIO renderer device (fromIntegral <$> windowInitialSize defaultWindow) g c
@@ -86,7 +96,7 @@ initWindow g c = do
 
 refreshIO :: Renderer -> AudioDevice -> V2 Int32 -> Game -> GameConfig -> IO ()
 refreshIO r d s g c = do
-  threadDelay $ hz 60
+  delay $ fps c
   events <- pollEvents
   -- Screen
   let screen = getScreenSize events s
@@ -144,3 +154,16 @@ decrement t = do
   if x == 0
     then return ()
     else void $ swapMVar t $ x - 1
+
+delay :: Maybe Tick -> IO ()
+delay t = threadDelay $ hz $ unrefine $ fromJust t
+
+getWindowSize :: Maybe Int -> WindowConfig
+getWindowSize (Just 0) = defaultChisitoWindow
+getWindowSize (Just 1) = defaultChisitoWindow {windowMode = Maximized}
+getWindowSize (Just 2) = defaultChisitoWindow {windowMode = FullscreenDesktop}
+getWindowSize (Just 3) = defaultChisitoWindow {windowMode = Fullscreen}
+getWindowSize _ = defaultChisitoWindow
+
+defaultChisitoWindow :: WindowConfig
+defaultChisitoWindow = defaultWindow {windowResizable = True, windowHighDPI = True}

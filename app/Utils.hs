@@ -9,7 +9,7 @@ import Data.List (uncons)
 import Lens.Micro (over, set, (&))
 import Lens.Micro.TH (makeLenses)
 import Text.Printf (printf)
-import Types
+import Types (Addr, Byte)
 import Prelude hiding (max)
 
 data Err = StackOverflow | StackUnderflow deriving (Show)

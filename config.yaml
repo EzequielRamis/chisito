@@ -1,0 +1,58 @@
+# Background color (RGB)
+background:
+  red: 0
+  green: 0
+  blue: 0
+# Foreground color (RGB)
+foreground:
+  red: 255
+  green: 255
+  blue: 255
+# Chip-8 keypad mapping.
+# 
+# It must be a 16-length array,
+# in which every element's position
+# corresponds to its original key value.
+# 
+#    keyboard                      original       
+# ---------------              ---------------
+#  1 | 2 | 3 | 4                1 | 2 | 3 | C
+# ---------------              ---------------
+#  Q | W | E | R                4 | 5 | 6 | D
+# ---------------     --->     ---------------
+#  A | S | D | F                7 | 8 | 9 | E
+# ---------------              ---------------
+#  Z | X | C | V                A | 0 | B | F
+# ---------------              ---------------
+keymap: [
+    "X",
+    "1",
+    "2",
+    "3",
+    "Q",
+    "W",
+    "E",
+    "A",
+    "S",
+    "D",
+    "Z",
+    "C",
+    "4",
+    "R",
+    "F",
+    "V"
+  ]
+# Tick rate (Hz)
+tick: 700
+# Display refresh rate (Hz)
+fps: 60
+# Delay timer (Hz)
+delayTimer: 60
+# Sound timer (Hz)
+soundTimer: 60
+# Window size
+# - 0 = Windowed (Default)
+# - 1 = Maximized
+# - 2 = Borderless Windowed
+# - 3 = Fullscreen
+windowSize: 0

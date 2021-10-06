@@ -1,0 +1,35 @@
+{
+  "background": {
+    "red": 0,
+    "green": 0,
+    "blue": 255
+  },
+  "foreground": {
+    "red": 255,
+    "green": 255,
+    "blue": 0
+  },
+  "keymap": [
+    "X",
+    "1",
+    "2",
+    "3",
+    "Q",
+    "W",
+    "E",
+    "A",
+    "S",
+    "D",
+    "Z",
+    "C",
+    "4",
+    "R",
+    "F",
+    "V"
+  ],
+  "tick": 700,
+  "fps": 60,
+  "delayTimer": 60,
+  "soundTimer": 60,
+  "windowSize": 0
+}
