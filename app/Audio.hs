@@ -1,79 +1,48 @@
-{-# LANGUAGE GADTs #-}
-
 module Audio where
 
-import Control.Monad (zipWithM_)
-import Data.IORef (IORef, newIORef, readIORef, writeIORef)
-import Data.Int (Int16, Int32)
-import qualified Data.Vector.Storable.Mutable as MV
-import SDL
-  ( AudioDevice,
-    AudioDeviceUsage (ForPlayback),
-    AudioFormat (Signed16BitLEAudio, Signed16BitNativeAudio),
-    Changeable (Mandate),
-    Channels (Mono),
-    OpenDeviceSpec
-      ( OpenDeviceSpec,
-        openDeviceCallback,
-        openDeviceChannels,
-        openDeviceFormat,
-        openDeviceFreq,
-        openDeviceName,
-        openDeviceSamples,
-        openDeviceUsage
-      ),
-    PlaybackState (Pause, Play),
-    openAudioDevice,
-    setAudioDevicePlaybackState,
-  )
+import Foreign.C (CInt)
+import SDL.Mixer
+import SDL.Raw.Mixer hiding (Channel, Chunk, openAudio, pause, pauseMusic, pausedMusic, playingMusic, resume, resumeMusic)
+import System.Directory (XdgDirectory (XdgConfig), getXdgDirectory)
 
-newDevice :: [Int16] -> IO AudioDevice
-newDevice b = do
-  s <- newIORef b
-  (device, _) <-
-    openAudioDevice
-      OpenDeviceSpec
-        { SDL.openDeviceFreq =
-            Mandate 48000,
-          SDL.openDeviceFormat =
-            Mandate Signed16BitNativeAudio,
-          SDL.openDeviceChannels =
-            Mandate Mono,
-          SDL.openDeviceSamples = 4096,
-          SDL.openDeviceCallback = audioCB s,
-          SDL.openDeviceUsage = ForPlayback,
-          SDL.openDeviceName = Nothing
-        }
-  return device
+initBeep :: IO ()
+initBeep = newBeep >>= playBeep >> pauseBeep
 
-playBeep :: AudioDevice -> IO ()
-playBeep device = setAudioDevicePlaybackState device Play
+newBeep :: IO Chunk
+newBeep = getXdgDirectory XdgConfig "chisito/beep.wav" >>= newSound
 
-pauseBeep :: AudioDevice -> IO ()
-pauseBeep device = setAudioDevicePlaybackState device Pause
+newSound :: FilePath -> IO Chunk
+newSound file = openAudio def 256 >> load file
 
-beep :: [Int16]
-beep =
-  map
-    ( \n ->
-        let t = fromIntegral n / 48000 :: Double
-            freq = 250
-         in round (fromIntegral (div maxBound 2 :: Int16) * sin (2 * pi * freq * t))
-    )
-    [0 :: Int32 ..]
+playBeep :: Chunk -> IO ()
+playBeep = playForever
 
-audioCB :: IORef [Int16] -> AudioFormat sampleType -> MV.IOVector sampleType -> IO ()
-audioCB samples format buffer =
-  case format of
-    Signed16BitLEAudio ->
-      do
-        samples' <- readIORef samples
-        let n = MV.length buffer
-        zipWithM_
-          (MV.write buffer)
-          [0 ..]
-          (take n samples')
-        writeIORef
-          samples
-          (drop n samples')
-    _ -> error "Unsupported audio format"
+pauseBeep :: IO ()
+pauseBeep = pause AllChannels
+
+resumeBeep :: IO ()
+resumeBeep = resume AllChannels
+
+def :: Audio
+def =
+  Audio
+    { audioFrequency = SDL.Raw.Mixer.DEFAULT_FREQUENCY,
+      audioFormat = wordToFormat SDL.Raw.Mixer.DEFAULT_FORMAT,
+      audioOutput = cIntToOutput SDL.Raw.Mixer.DEFAULT_CHANNELS
+    }
+
+wordToFormat :: SDL.Raw.Mixer.Format -> SDL.Mixer.Format
+wordToFormat SDL.Raw.Mixer.AUDIO_U8 = FormatU8
+wordToFormat SDL.Raw.Mixer.AUDIO_S8 = FormatS8
+wordToFormat SDL.Raw.Mixer.AUDIO_U16LSB = FormatU16_LSB
+wordToFormat SDL.Raw.Mixer.AUDIO_S16LSB = FormatS16_LSB
+wordToFormat SDL.Raw.Mixer.AUDIO_U16MSB = FormatU16_MSB
+wordToFormat SDL.Raw.Mixer.AUDIO_S16MSB = FormatS16_MSB
+wordToFormat SDL.Raw.Mixer.AUDIO_U16SYS = FormatU16_Sys
+wordToFormat SDL.Raw.Mixer.AUDIO_S16SYS = FormatS16_Sys
+wordToFormat _ = error "SDL.Mixer.wordToFormat: unknown Format."
+
+cIntToOutput :: CInt -> Output
+cIntToOutput 1 = Mono
+cIntToOutput 2 = Stereo
+cIntToOutput _ = error "SDL.Mixer.cIntToOutput: unknown number of channels."

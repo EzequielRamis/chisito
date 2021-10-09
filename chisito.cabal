@@ -36,6 +36,7 @@ executable chisito
     -- other-extensions:
     build-depends:    base ^>=4.14.2.0,
                       sdl2,
+                      sdl2-mixer,
                       bytestring,
                       bitwise,
                       vector,

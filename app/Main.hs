@@ -2,7 +2,7 @@
 
 module Main where
 
-import Audio (beep, newDevice, pauseBeep, playBeep)
+import Audio (initBeep, pauseBeep, resumeBeep)
 import Config
   ( Chisito (configFile, gameFile),
     GameConfig (..),
@@ -18,7 +18,7 @@ import Control.Concurrent
     swapMVar,
     threadDelay,
   )
-import Control.Monad (forever, unless, void, when)
+import Control.Monad (forever, unless, void)
 import qualified Data.ByteString as B
 import Data.Int (Int32)
 import Data.List (elemIndex, find)
@@ -29,9 +29,7 @@ import Decode (decode)
 import Game (Game (..), exec, fetch, newGame, suc)
 import Refined (unrefine)
 import SDL
-  ( AudioDevice,
-    AudioDeviceStatus (Paused, Playing),
-    Event (eventPayload),
+  ( Event (eventPayload),
     EventPayload (KeyboardEvent, QuitEvent, WindowResizedEvent),
     InitFlag (InitAudio, InitEvents, InitVideo),
     InputMotion (Pressed),
@@ -42,7 +40,6 @@ import SDL
     WindowConfig (..),
     WindowMode (..),
     WindowResizedEventData (windowResizedEventSize),
-    audioDeviceStatus,
     createRenderer,
     createWindow,
     defaultRenderer,
@@ -51,6 +48,7 @@ import SDL
     initialize,
     pollEvents,
   )
+import qualified SDL.Mixer as Mix
 import Turtle (FilePath, basename, encodeString, options)
 import Types (Program, Tick, Timer)
 import UI (render)
@@ -59,7 +57,7 @@ import Prelude hiding (FilePath)
 
 main :: IO ()
 main = do
-  chisito <- options "A little chip-8 interpreter" cli >>= orDefault
+  chisito <- orDefault =<< options "A little chip-8 interpreter" cli
   bytestr <- B.readFile $ encodeString $ gameFile chisito
   config <- readGameConfig $ fromJust $ configFile chisito
   load (program bytestr) (getGameConfig config) (basename $ gameFile chisito)
@@ -88,14 +86,15 @@ play g c = do
 initWindow :: Game -> GameConfig -> FilePath -> IO ()
 initWindow g c t = do
   initialize [InitVideo, InitEvents, InitAudio]
+  Mix.initialize [Mix.InitMP3]
   window <- createWindow (append "Chisito - " $ pack $ encodeString t) (getWindowSize $ windowSize c)
   renderer <- createRenderer window (-1) defaultRenderer
-  device <- newDevice beep
-  refreshIO renderer device (fromIntegral <$> windowInitialSize defaultWindow) g c
+  initBeep
+  refreshIO renderer (fromIntegral <$> windowInitialSize defaultWindow) g c
   destroyWindow window
 
-refreshIO :: Renderer -> AudioDevice -> V2 Int32 -> Game -> GameConfig -> IO ()
-refreshIO r d s g c = do
+refreshIO :: Renderer -> V2 Int32 -> Game -> GameConfig -> IO ()
+refreshIO r s g c = do
   delay $ fps c
   events <- pollEvents
   -- Screen
@@ -108,12 +107,11 @@ refreshIO r d s g c = do
   V.copy (_keypad g) newKeys
   -- Sound Timer
   st <- readMVar (_st g)
-  status <- audioDeviceStatus d
   if st == 0
-    then when (status == Playing) $ pauseBeep d
-    else when (status == Paused) $ playBeep d
+    then pauseBeep
+    else resumeBeep
   --
-  unless (quitPressed events) $ refreshIO r d screen g c
+  unless (quitPressed events) $ refreshIO r screen g c
 
 keymapping :: KeyboardEventData -> Maybe Int
 keymapping ke = elemIndex (keysymKeycode $ keyboardEventKeysym ke) $ unrefine defaultKeymap
